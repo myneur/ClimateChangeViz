@@ -33,7 +33,7 @@ def download(models, experiments, DATADIR, forecast_from=2015, save_failing_scen
               'date': date
               }, 
               filename)
-            util.unzip(filename)
+            util.unzip(filename, DATADIR)
           else:
             print(f'REUSING: {experiment} for {model}')
         except Exception as e:

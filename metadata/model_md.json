@@ -10,13 +10,16 @@
 
 
 
-"my_hot": ["CAMS-CSM1-0", "CNRM-CM6-1-HR", "CNRM-CM6-1"],
-"nodata-not-loaded": ["FGOALS-g3", "FGOALS-f3-L", "TaiESM1", "CIESM","NorESM2-LM", "MPI-ESM1-2-HR", "CESM2", "EC-Earth3",   "NorESM2-MM", "AWI-CM-1-1-MR", "UKESM1-0-LL", "CMCC-CM2-SR5", "HadGEM3-GC31-MM", "GISS-E2-1-H", "GISS-E2-2-G", "E3SM-1-0",  "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "IITM-ESM", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0"],
-"errors": {"ValueError: Axis limits cannot be NaN or Inf:": ["GISS-E2-1-G", "EC-Earth3-Veg", "HadGEM3-GC31-LL"] },
-"problem-nolatlon": ["INM-CM4-8", "MCM-UA-1-0", "CESM2-WACCM", "ACCESS-CM2", "ACCESS-ESM1-5"],
+"probably_hot": ["CAMS-CSM1-0", "CNRM-CM6-1-HR", "CNRM-CM6-1"],
+"nodata-not-loaded": ["TaiESM1", "CIESM","MPI-ESM1-2-HR", "CESM2", "EC-Earth3",   "NorESM2-MM", "AWI-CM-1-1-MR", "UKESM1-0-LL", "CMCC-CM2-SR5", "GISS-E2-1-H", "GISS-E2-2-G", "E3SM-1-0",  "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0"],
+"missing-data":{"missing2015-2050":["FGOALS-f3-L"], "almost-all":["FGOALS-g3"]},
+"errors": {"ValueError: Axis limits cannot be NaN or Inf:": 
+  ["GISS-E2-1-G", "EC-Earth3-Veg", "HadGEM3-GC31-LL", "HadGEM3-GC31-MM", "IITM-ESM", "NorESM2-LM", "MPI-ESM1-2-L"], 
+"ValueError: No lat lon": 
+  ["INM-CM4-8", "MCM-UA-1-0", "CESM2-WACCM", "ACCESS-CM2", "ACCESS-ESM1-5"]},
 
 "smaller_models": ["HadGEM3-GC31-LL", "INM-CM5-0", "IPSL-CM6A-LR", "MIROC-ES2L", "UKESM1-0-LL" ],
-"models_1st_round": ["GFDL-ESM4", "FIO-ESM-2-0", "FGOALS-f3-L", "CAMS-CSM1-0", "ACCESS-CM2", 
+"models_1st_round": ["GFDL-ESM4", "FIO-ESM-2-0", "CAMS-CSM1-0", "ACCESS-CM2", 
   "AWI-CM-1-1-MR", "INM-CM5-0", "MIROC6", "ACCESS-ESM1-5", "BCC-CSM2-MR", "KACE-1-0-G", "IPSL-CM6A-LR", "NorESM2-MM", "CNRM-CM6-1-HR"],
 
 "source": "ccrs from model weighting by historical accuracy: esd.copernicus.org/articles/11/995/2020/",
@@ -72,6 +75,81 @@
   "NESM3": 2.79,
   "E3SM-1-0": 2.99
 },
+
+"by_states": {"Australia":[
+  "ACCESS-CM2",
+  "ACCESS-ESM1-5"], 
+"Germany":[
+"AWI-CM-1-1-MR",
+"AWI-ESM-1-1-LR",
+"MPI-ESM1-2-HR",
+"MPI-ESM1-2-LR"], 
+"China":[
+  "BCC-CSM2-MR",
+  "BCC-ESM1",
+  "CAMS-CSM1-0",
+  "CIESM",
+  "FGOALS-f3-L",
+  "FGOALS-g3",
+  "FIO-ESM-2-0",
+  "NESM3"], 
+"Canada":[
+  "CanESM5",
+  "CanESM5-CanOE"], 
+"USA":[
+  "CESM2",
+  "CESM2-FV2",
+  "CESM2-WACCM",
+  "CESM2-WACCM-FV2",
+  "E3SM-1-0",
+  "E3SM-1-1",
+  "E3SM-1-1-ECA",
+  "GFDL-ESM4",
+  "GISS-E2-1-G",
+  "GISS-E2-1-H",
+  "MCM-UA-1-0"], 
+"Italy":[
+"CMCC-CM2-HR4",
+"CMCC-CM2-SR5",
+"CMCC-ESM2"], 
+"France":[
+  "CNRM-CM6-1",
+  "CNRM-CM6-1-HR",
+  "CNRM-ESM2-1",
+  "IPSL-CM5A2-INCA",
+  "IPSL-CM6A-LR"], 
+"Europe":[
+"EC-Earth3",
+"EC-Earth3-AerChem",
+"EC-Earth3-CC",
+"EC-Earth3-Veg",
+"EC-Earth3-Veg-LR"], 
+"UK":[
+"HadGEM3-GC31-LL",
+"HadGEM3-GC31-MM"], 
+"Russia":[
+  "INM-CM4-8",
+  "INM-CM5-0"], 
+"SouthKorea":[
+  "KACE-1-0-G",
+  "KIOST-ESM",
+  "SAM0-UNICON"], 
+"Japan":[
+  "MIROC6",
+  "MIROC-ES2H",
+  "MIROC-ES2L",
+  "MRI-ESM2-0"], 
+"Switzerland":[
+"MPI-ESM-1-2-HAM"], 
+"Norway":[
+"NorCPM1",
+"NorESM2-LM",
+"NorESM2-MM"], 
+"India":[
+"IITM-ESM"], 
+"Other":[
+"TaiESM1",
+"UKESM1-0-LL"]}, 
 "area": {"cz": [15, 50, 14, 51]},
 "generations":{
   "1927": "Greatest",

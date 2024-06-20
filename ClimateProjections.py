@@ -1,5 +1,6 @@
 # TODO
 # plot range to the right of the chart
+# unziping to different folders not to interfere
 # 1. plot ranges at the right corner
 # 2. summer afternoon extremes: 'daily', 'daily_maximum_near_surface_air_temperature'
 
@@ -17,7 +18,6 @@ from pathlib import Path
 import os
 from os.path import basename
 import cftime
-import zipfile # To extract zipfiles
 import urllib3
 urllib3.disable_warnings() # Disable warnings for data download via API
 
@@ -129,7 +129,6 @@ print('opening aggregations')
 #for model in models: 
 #  print(model)
 #  data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*{model}*.nc', combine='nested', concat_dim='model')
-#  data_ds.load()
 
 data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model')
 data_ds.load()
@@ -207,9 +206,9 @@ def chart():
 
 
   # OUTPUT
-  fig.savefig(f'chart_t_{len(set(data.model.values.flat))}m.png')
+  fig.savefig(f'charts/chart_t_{len(set(data.model.values.flat))}m.png')
   plt.show()
 
 chart()
 
-  #print(nodata)
+#print(nodata)
