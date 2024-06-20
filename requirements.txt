@@ -1,0 +1,10 @@
+cdsapi
+dask
+cftime
+zipfile
+xarray
+numpy
+pandas
+matplotlib
+cartopy
+

@@ -1,0 +1,17 @@
+#### MATPLOTLIBRC FORMAT
+
+## See http://matplotlib.org/users/customizing.html#the-matplotlibrc-file for
+## more details on the paths which are checked for the configuration file.
+
+figure.figsize: (16, 8)
+
+axes.spines.top: False
+axes.spines.bottom: False
+axes.spines.right: False
+axes.spines.left: False
+
+
+
+grid.color: '#717174'
+grid.alpha: 0.5
+grid.linestyle: (0, (3, 9)) 
