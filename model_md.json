@@ -1,8 +1,17 @@
 {  
-"selected_models": [  "CanESM5-CanOE", "CanESM5", "CESM2", "CNRM-ESM2-1",  "EC-Earth3", "FGOALS-f3-L", "FGOALS-g3", "FIO-ESM-2-0", "GFDL-ESM4", "INM-CM5-0", "IPSL-CM6A-LR", "KACE-1-0-G", "MIROC6", "MIROC-ES2L", "MPI-ESM1-2-HR", "NESM3", "NorESM2-MM", "MRI-ESM2-0", "AWI-CM-1-1-MR", "BCC-CSM2-MR", "UKESM1-0-LL", "CMCC-CM2-SR5", "HadGEM3-GC31-MM", "GISS-E2-1-H", "GISS-E2-2-G", "E3SM-1-0", "TaiESM1", "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "IITM-ESM", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "MPI-ESM1-2-LR", "CAS-ESM2-0"],
+"selected_models": [
+  "CanESM5-CanOE", "CAMS-CSM1-0", "KACE-1-0-G", "CNRM-ESM2-1", "FIO-ESM-2-0", "INM-CM5-0", "NESM3", "MIROC6", "ACCESS-CM2", "CNRM-CM6-1-HR", "MRI-ESM2-0", "MIROC-ES2L", "IPSL-CM6A-LR", "CanESM5", "BCC-CSM2-MR", "GFDL-ESM4"
+],
+
+
+
+"previous": [  "CanESM5-CanOE", "CanESM5", "CNRM-ESM2-1", "FIO-ESM-2-0", "GFDL-ESM4", "INM-CM5-0", "IPSL-CM6A-LR", "KACE-1-0-G", "MIROC6", "MIROC-ES2L", "NESM3",  "BCC-CSM2-MR", 
+  "ACCESS-ESM1-5", "MPI-ESM-1-2-HAM", "MPI-ESM1-2-LR" ],
+
+
 
 "my_hot": ["CAMS-CSM1-0", "CNRM-CM6-1-HR", "CNRM-CM6-1"],
-"nodata-not-loaded": ["CIESM","NorESM2-LM", "MPI-ESM1-2-HR", "CESM2", "EC-Earth3", "FGOALS-f3-L", "FGOALS-g3", "MPI-ESM1-2-HR", "NorESM2-MM", "AWI-CM-1-1-MR", "UKESM1-0-LL", "CMCC-CM2-SR5", "HadGEM3-GC31-MM", "GISS-E2-1-H", "GISS-E2-2-G", "E3SM-1-0", "TaiESM1", "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "IITM-ESM", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0"],
+"nodata-not-loaded": ["FGOALS-g3", "FGOALS-f3-L", "TaiESM1", "CIESM","NorESM2-LM", "MPI-ESM1-2-HR", "CESM2", "EC-Earth3",   "NorESM2-MM", "AWI-CM-1-1-MR", "UKESM1-0-LL", "CMCC-CM2-SR5", "HadGEM3-GC31-MM", "GISS-E2-1-H", "GISS-E2-2-G", "E3SM-1-0",  "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "IITM-ESM", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0"],
 "errors": {"ValueError: Axis limits cannot be NaN or Inf:": ["GISS-E2-1-G", "EC-Earth3-Veg", "HadGEM3-GC31-LL"] },
 "problem-nolatlon": ["INM-CM4-8", "MCM-UA-1-0", "CESM2-WACCM", "ACCESS-CM2", "ACCESS-ESM1-5"],
 

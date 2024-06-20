@@ -21,8 +21,6 @@ import zipfile # To extract zipfiles
 import urllib3
 urllib3.disable_warnings() # Disable warnings for data download via API
 
-import cdsapi
-
 # Libraries for working with multi-dimensional arrays
 import numpy as np
 import xarray as xr
@@ -36,10 +34,12 @@ import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import cartopy.feature as cfeature
 
+from downloader import download
+
 import util
 from util import debug
 
-experiments = ['historical', 'ssp119', 'ssp126', 'ssp245', 'ssp534os'] # removed for now: 'ssp570', 'ssp585'
+experiments = ['historical', 'ssp119', 'ssp126', 'ssp245'] # removed for now: 'ssp534os', 'ssp570', 'ssp585'
 scenarios = {
     'historical': "hindcast", 
     'ssp119': "1.5°: carbon neutral in 2050", 
@@ -54,83 +54,9 @@ forecast_from = 2015 # hidcast data is not available beyond 2014 anyway
 DATADIR = f'/Users/myneur/Downloads/ClimateData/'
 
 md = util.loadMD('model_md')
-
 models = md['selected_models']
-unavailable_experiments = util.loadMD('unavailable_experiments')
 
-
-c = cdsapi.Client()
-
-
-# DOWNLOAD DATA FOR HISTORICAL PERIOD
-
-for model in models:
-  if 'historical' in unavailable_experiments and not model in unavailable_experiments['historical']:
-    try:
-      filename = f'{DATADIR}cmip6_monthly_1850-{forecast_from-1}_historical_{model}.zip'
-      if not os.path.isfile(filename):
-        print("REQUESTING: "+model)
-        c.retrieve(
-          'projections-cmip6',
-          {
-              #'area': area.cz,
-              'format': 'zip',
-              'temporal_resolution': 'monthly',
-              'experiment': 'historical',
-              'level': 'single_levels',
-              'variable': 'near_surface_air_temperature',
-              'model': f'{model}',
-              'date': f'1850-01-01/{forecast_from-1}-12-31',
-          },
-          filename)
-        util.unzip(filename)
-      else:
-        print("REUSING: "+model)
-    except:
-        print(f'\nUNAVAILABLE historical for {model}')
-        if not 'historical' in unavailable_experiments: 
-          unavailable_experiments['historical'] = []
-        unavailable_experiments['historical'].append(model)
-  else:
-    print(f'\nSKIPPING UNAVAILABLE historical for {model}')
-
-# DOWNLOAD DATA FOR FUTURE SCENARIOS
-
-for experiment in experiments[1:]: # except for 'historical' that is first
-  for model in models:
-    if experiment in unavailable_experiments and not (model in unavailable_experiments[experiment]):
-      try:
-        filename = f'{DATADIR}cmip6_monthly_{forecast_from}-2100_{experiment}_{model}.zip'
-        if not os.path.isfile(filename):
-          print(f'REQUESTING: {experiment} for {model}')
-          c.retrieve(
-            'projections-cmip6',
-            {
-                'format': 'zip',
-                'temporal_resolution': 'monthly',
-                'experiment': f'{experiment}',
-                'level': 'single_levels',
-                'variable': 'near_surface_air_temperature',
-                'model': f'{model}',
-                'date': f'{forecast_from}-01-01/2100-12-31',
-            },
-            filename)
-          util.unzip(filename)
-        else:
-          print(f'REUSING: {experiment} for {model}')
-      except:
-        print(f'\nUNAVAILABLE experiment {experiment} for {model}')
-        if not experiment in unavailable_experiments: 
-          unavailable_experiments[experiment] = []
-        unavailable_experiments[experiment].append(model)
-  else:
-    print(f'\nSKIPPING UNAVAILABLE experiment {experiment} for {model}')
-
-if unavailable_experiments:
-  print("\nUNAVAILABLE:")
-  print(unavailable_experiments)
-
-util.saveMD(md, 'unavailable_experiments') 
+download(models, experiments, DATADIR, save_failing_scenarios=True)
 
 cmip6_nc = list()
 cmip6_nc_rel = glob(f'{DATADIR}tas*.nc')
@@ -201,15 +127,18 @@ print('opening aggregations')
 
 #nodata = []
 #for model in models: 
-  #print(model)
+#  print(model)
+#  data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*{model}*.nc', combine='nested', concat_dim='model')
+#  data_ds.load()
+
 data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model')
 data_ds.load()
 
 # removing historical data before 2014, because some models can include them despite request
 def filter_years(ds):
-    if 'historical' in ds['experiment']:
-        ds = ds.sel(year=ds['year'] < forecast_from)
-    return ds
+  if 'historical' in ds['experiment']:
+    ds = ds.sel(year=ds['year'] < forecast_from)
+  return ds
 data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
 
 data = data_ds_filtered['tas']
@@ -222,14 +151,11 @@ preindustrial_temp = data_50.sel(year=slice(1850, 1900)).mean(dim='year').mean(d
 
 models_read = set(data.model.values.flat)
 model_count = len(models_read)
+print(model_count)
 print(models_read)
 print('CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.')
 
 colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
-
-#matplotlib.rc('font', family='sans-serif', serif='Helvetica')
-#fonts_available = [(matplotlib.font_manager.FontProperties(fname=font).get_name()) for font in matplotlib.font_manager.findSystemFonts() if 'Humor' in font] # Only Humor and Liberation?
-#print(matplotlib.font_manager.findfont(fonts_available[0]))
 
 def chart():
   fig, ax = plt.subplots(1, 1, figsize = (16, 8))
@@ -286,4 +212,4 @@ def chart():
 
 chart()
 
-#print(nodata)
+  #print(nodata)

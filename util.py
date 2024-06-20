@@ -4,7 +4,6 @@ def debug():
   with open('debug-exec-chunks.py', 'r') as f: exec(f.read())
 
 def loadMD(where):
-  print(where)
   try:
     with open(where + ".json", 'r') as f: 
       return json.load(f)
