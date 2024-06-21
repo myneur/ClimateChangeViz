@@ -10,6 +10,9 @@ axes.spines.bottom: False
 axes.spines.right: False
 axes.spines.left: False
 
-grid.color: #717174
+grid.color: 717174
 grid.alpha: 0.5
 grid.linestyle: (0, (3, 9)) 
+
+ytick.color: 717174
+xtick.color: 717174

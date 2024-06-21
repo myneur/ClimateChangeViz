@@ -17,15 +17,13 @@ from pathlib import Path
 import os
 from os.path import basename
 import cftime
-import urllib3
-urllib3.disable_warnings() # Disable warnings for data download via API
 
-# Libraries for working with multi-dimensional arrays
+# Data
 import numpy as np
 import xarray as xr
 import pandas as pd
 
-# Libraries for plotting and visualising data
+# Viz
 import matplotlib
 import matplotlib.path as mpath
 import matplotlib.pyplot as plt
@@ -33,10 +31,13 @@ import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import cartopy.feature as cfeature
 
+# Utils
 from downloader import download
-
 import util
 from util import debug
+
+# SETUP #
+# What to analyze:
 
 variable = 'temperature'
 #variable = 'max_temperature'
@@ -65,7 +66,7 @@ DATADIR = f'/Users/myneur/Downloads/ClimateData/{variable}/'
 
 models = md['validated_models']
 if variable == 'temperature':
-  download(models, experiments, DATADIR, mark_failing_scenarios=False, forecast_from=forecast_from)
+  download(models, experiments, DATADIR, mark_failing_scenarios=True, forecast_from=forecast_from)
 else:
   download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency='monthly', mark_failing_scenarios=True, forecast_from=forecast_from)
 
@@ -154,19 +155,16 @@ try:
 
   models_read = set(data.model.values.flat)
   model_count = len(models_read)
-  print(model_count)
-  print(models_read)
-  print('CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.')
 
   colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
 
 
   def chart(zero=0, reference_lines=None):
-    fig, ax = plt.subplots(1, 1, figsize = (16, 8))
+    fig, ax = plt.subplots(1, 1)
     if variable == 'temperature':
-      ax.set(title=f'Global temperature projections ({model_count} CMIP6 models)', ylabel='Temperature near surface (°C)')  
+      ax.set(title=f'Global temperature projections ({model_count} CMIP6 models)', ylabel='Temperature')  
     else:
-      ax.set(title=f'Maximumal temperature (in Czechia) projections ({model_count} CMIP6 models)', ylabel='Max Temperature near surface (°C)')  
+      ax.set(title=f'Maximal temperature (in Czechia) projections ({model_count} CMIP6 models)', ylabel='Max Temperature (°C)')  
 
     ax.set(xlim=(1850, 2100))
     plt.subplots_adjust(left=.08, right=.97, top=0.95, bottom=0.15)
@@ -174,17 +172,12 @@ try:
 
     # SCALE
     if zero:
-      diff_temp = [round(val - zero, 1) for val in plt.gca().get_yticks()]
       yticks = [0, 1.5, 2, 3, 4]
       plt.gca().set_yticks([val + zero for val in yticks])
-      plt.tick_params(axis='y', colors='#717174')
-
       ax.set_ylim([-1 +zero, 4 + zero])
-
       plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
     else:
       ax.set_ylim([28, 34])
-    plt.tick_params(axis='x', colors='#717174')
 
     xticks_major = [1850, 2000, 2015, 2050, 2075, 2100]
     xtickvals_major = ['1850', '2000', '2015', '2050', '2075', '2100']
@@ -197,17 +190,14 @@ try:
     ax.set_xticklabels(xtickvals_minor, minor=True, rotation=45, va='bottom', ha='right',  fontstyle='italic', color='#b2b2b2', fontsize=9)
     ax.xaxis.set_tick_params(which='minor', pad=70, color="white")
 
-
     if reference_lines: 
-      ax.axhline(y=zero, color='#717174') # base
-      for ref in reference_lines:
-        ax.axhline(y=zero+ref, color='#E34D21', linestyle='--', alpha=.5, linewidth=.5)
-      plt.grid(axis='y', linestyle=(0, (3, 9)), alpha=.5)
-
-    # LEGEND
-    legend = [scenarios[s] for s in data_50.experiment.values]
+      ax.axhline(y=zero+reference_lines[0], color='#717174') # base
+      for ref in reference_lines[1:]:
+        ax.axhline(y=zero+ref, color='#E34D21', linewidth=.5)
+      plt.grid(axis='y')
 
     # DATA
+    legend = [scenarios[s] for s in data_50.experiment.values]
     for i in np.arange(len(experiments)):
       try:
         # AVERAGES
@@ -219,14 +209,20 @@ try:
     ax.legend(handles, labels, loc='upper left', frameon=False)
 
 
+    # CONTEXT
+    context = "models: " + ' '.join(map(str, models_read))
+    plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
+    print(context)
+    print('CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.')
+
     # OUTPUT
     fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.png')
     plt.show()
 
   if variable == 'temperature':
-    chart(zero=preindustrial_temp)
+    chart(zero=preindustrial_temp, reference_lines=[0, 2])
   else: 
-    chart()
+    chart(reference_lines=[preindustrial_temp, 32])
 except Exception as e:
   print(f'- failed {model}')
   print(f"Error: {type(e).__name__}: {e}")
