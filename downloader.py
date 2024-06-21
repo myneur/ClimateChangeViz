@@ -4,11 +4,13 @@ import os
 
 c = cdsapi.Client()
 
-unavailable_experiments = util.loadMD('unavailable_experiments')
+status = util.loadMD('status')
 
-def download(models, experiments, DATADIR, forecast_from=2015, save_failing_scenarios=False): # WIP
+def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, forecast_from=2015): # WIP
+  unavailable_experiments = status['unavailable_experiments'][variable]  
+  separator = '-'*60
+  print(f'\n\nRequesting {variable} {frequency} {experiments} for {models}\n{separator}\n')
   for experiment in experiments:
-    
     if experiment == 'historical':
       start = 1850
       till = forecast_from-1      
@@ -22,23 +24,23 @@ def download(models, experiments, DATADIR, forecast_from=2015, save_failing_scen
         try:
           filename = f'{DATADIR}cmip6_monthly_{start}-{till}_{experiment}_{model}.zip'
           if not os.path.isfile(filename):
-            print(f'REQUESTING: {experiment} from {model} for {date}')
-            c.retrieve('projections-cmip6', 
-              {'format': 'zip',
-              'temporal_resolution': 'monthly',
+            params = {'format': 'zip',
+              'temporal_resolution': frequency,
               'experiment': f'{experiment}',
               'level': 'single_levels',
-              'variable': 'near_surface_air_temperature',
+              'variable': variable,
               'model': f'{model}',
               'date': date
-              }, 
-              filename)
+              }
+            if area: params['area'] = area
+            print(f'REQUESTING: {experiment} from {model} for {date}')
+            c.retrieve('projections-cmip6', params, filename)
             util.unzip(filename, DATADIR)
           else:
             print(f'REUSING: {experiment} for {model}')
         except Exception as e:
           print(f'\nUNAVAILABLE experiment {experiment} for {model}')
-          print(f"Error: {type(e).__name__}: {e}")
+          print(f"\nError:\n––––––\n{type(e).__name__}: {e}\n––––––\n")
           if not experiment in unavailable_experiments: 
             unavailable_experiments[experiment] = []
           unavailable_experiments[experiment].append(model)
@@ -48,5 +50,6 @@ def download(models, experiments, DATADIR, forecast_from=2015, save_failing_scen
   if unavailable_experiments:
     print(f"\nUNAVAILABLE:\n{unavailable_experiments}")
   
-  if(save_failing_scenarios):
-    util.saveMD(unavailable_experiments, 'unavailable_experiments') 
+  if(mark_failing_scenarios):
+    status['unavailable_experiments'][variable] = unavailable_experiments
+    util.saveMD(status, 'status') 
