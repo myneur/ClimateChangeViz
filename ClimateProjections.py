@@ -16,7 +16,6 @@ from glob import glob
 from pathlib import Path
 import os
 from os.path import basename
-import cftime
 
 # Data
 import numpy as np
@@ -27,6 +26,8 @@ import pandas as pd
 import matplotlib
 import matplotlib.path as mpath
 import matplotlib.pyplot as plt
+
+import cftime
 import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import cartopy.feature as cfeature
@@ -35,6 +36,7 @@ import cartopy.feature as cfeature
 from downloader import download
 import util
 from util import debug
+import traceback
 
 # SETUP #
 # What to analyze:
@@ -59,12 +61,11 @@ variables = {
 
 md = util.loadMD('model_md')
 
-forecast_from = 2015 # hidcast data is not available beyond 2014 anyway
-#DATADIR = f'/Users/myneur/Downloads/ClimateData/validated/'
+forecast_from = 2015 # hidcast data is not available beyond 2014 anyway for most models
 DATADIR = f'/Users/myneur/Downloads/ClimateData/{variable}/'
 
 
-models = md['validated_models']
+models = md['validated_models'] # models to be downloaded – when empty, only already downloaded files will be visualized
 if variable == 'temperature':
   download(models, experiments, DATADIR, mark_failing_scenarios=True, forecast_from=forecast_from)
 else:
@@ -75,46 +76,38 @@ cmip6_nc_rel = glob(f'{DATADIR}tas*.nc')
 for i in cmip6_nc_rel:
     cmip6_nc.append(os.path.basename(i))
 
+def geog_agg(fn):
+  try:
+    ds = xr.open_dataset(f'{DATADIR}{fn}')
+    exp = ds.attrs['experiment_id']
+    mod = ds.attrs['source_id']
+    
+    # selected variable
+    da = ds[variables[variable]['dataset']] # 'tas' or 'tasmax'
+    if 'height' in da.coords:
+      da = da.drop_vars('height')
+    
+    weights = np.cos(np.deg2rad(da.lat))
+    weights.name = "weights"
+    da_weighted = da.weighted(weights)
 
-# Function to aggregate in geographical lat lon dimensions
+    if 'lat' in ds.coords: lat, lon = 'lat', 'lon' # Fixing various naming
+    else: lat, lon = 'latitude', 'longitude'
+    da_agg = da_weighted.mean(['lat', 'lon'])
 
-def aggregate_geo_time(fn): # TODO change naming not ot read the file to check for experiment and model
-  ncfile = f'{DATADIR}{fn}'
-  ds = xr.open_dataset(ncfile, decode_times=False)
-  experiment = ds.attrs['experiment_id']
-  model = ds.attrs['source_id']
+    da_yr = da_agg.groupby('time.year').mean()
 
-  # Converting dates to make it robust for incompatible date formats.
-  time_units = ds['time'].attrs['units']
-  time_data = ds['time'].values
-  dates = cftime.num2date(time_data, units=time_units, calendar='360_day')
-
-  # Chosen variable to visualize
-  da = ds[variables[variable]['dataset']] # 'tas' or 'tasmax'
-
-  # Spatial aggregation
-  weights = np.cos(np.deg2rad(da.lat))
-  weights.name = "weights"
-  da_weighted = da.weighted(weights)
-  da_agg = da_weighted.mean(['lat', 'lon'])
-
-  # Reassigning dates after conversion to support various date formats # instead of da_agg.groupby('time.year').mean()
-  years = [date.year for date in dates]
-  da_agg = da_agg.assign_coords(year=('time', years))
-  da_yr = da_agg.groupby('year').mean(dim='time')
-
-  # Conversion from Kelvin to Celsius
-  da_yr = da_yr - 273.15
-
-  # Additional data dimensions (to later combine data from multiple models & experiments)
-  da_yr = da_yr.assign_coords(model=model)
-  da_yr = da_yr.expand_dims('model')
-  da_yr = da_yr.assign_coords(experiment=experiment)
-  da_yr = da_yr.expand_dims('experiment')
-
-  # Saving aggregated data for a visualisation
-  ncaggregated = f'{DATADIR}cmip6_agg_{experiment}_{model}_{str(da_yr.year[0].values)}.nc'  
-  da_yr.to_netcdf(path=ncaggregated)
+    da_yr = da_yr - 273.15
+    
+    da_yr = da_yr.assign_coords(model=mod)
+    da_yr = da_yr.expand_dims('model')
+    da_yr = da_yr.assign_coords(experiment=exp)
+    da_yr = da_yr.expand_dims('experiment')
+    
+    da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
+  except Exception as e:
+    print(f"{filename}\nError: {type(e).__name__}: {e}")
+    traceback.print_exc(limit=1)
 
 def aggregate_all():
   for filename in cmip6_nc:
@@ -123,10 +116,11 @@ def aggregate_all():
       candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}')] # TODO: multiple files for multiple years can exist
       if not len(candidate_files):
         print(f'aggregating {model} {experiment}')
-        aggregate_geo_time(filename)
+        geog_agg(filename)
     except Exception as e:
       print(f'- failed {filename}')
       print(f"Error: {type(e).__name__}: {e}")
+      traceback.print_exc(limit=1)
 
 aggregate_all()
 print('opening aggregations')
@@ -135,6 +129,7 @@ print('opening aggregations')
 #  print(model)
 try:
   #data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*{model}*.nc', combine='nested', concat_dim='model')
+
   data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model')
   data_ds.load()
 
@@ -155,11 +150,16 @@ try:
 
   models_read = set(data.model.values.flat)
   model_count = len(models_read)
+  not_read = set(models)-models_read
+  print("\nNOT read: " + ' '.join(map(str, not_read)))
+except Exception as e:
+  print(f"\nError: {type(e).__name__}: {e}")
+  traceback.print_exc(limit=1)
 
-  colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
+colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
 
-
-  def chart(zero=0, reference_lines=None):
+def chart(what='mean', zero=None, reference_lines=None):
+  try:
     fig, ax = plt.subplots(1, 1)
     if variable == 'temperature':
       ax.set(title=f'Global temperature projections ({model_count} CMIP6 models)', ylabel='Temperature')  
@@ -171,14 +171,16 @@ try:
     ax.yaxis.label.set_size(14)
 
     # SCALE
-    if zero:
-      yticks = [0, 1.5, 2, 3, 4]
-      plt.gca().set_yticks([val + zero for val in yticks])
-      ax.set_ylim([-1 +zero, 4 + zero])
-      plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
-    else:
-      ax.set_ylim([28, 34])
+    if zero and not (np.isnan(zero) and not np.isinf(zero)):
+      if zero:
+        yticks = [0, 1.5, 2, 3, 4]
+        plt.gca().set_yticks([val + zero for val in yticks])
+        ax.set_ylim([-1 +zero, 4 + zero])
+        plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
+      else:
+        ax.set_ylim([28, 34])
 
+    # X AXIS
     xticks_major = [1850, 2000, 2015, 2050, 2075, 2100]
     xtickvals_major = ['1850', '2000', '2015', '2050', '2075', '2100']
     xticks_minor = [1900, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
@@ -196,15 +198,23 @@ try:
         ax.axhline(y=zero+ref, color='#E34D21', linewidth=.5)
       plt.grid(axis='y')
 
+    
     # DATA
-    legend = [scenarios[s] for s in data_50.experiment.values]
-    for i in np.arange(len(experiments)):
-      try:
-        # AVERAGES
-        ax.plot(data_50.year, data_50[i,:], color=f'{colors[i]}', label=f'{legend[i]}', linewidth=1.3)
-        ax.fill_between(data_50.year, data_90[i,:], data_10[i,:], alpha=0.05, color=f'{colors[i]}')
-      except:
-        pass
+    if what == 'mean':
+      legend = [scenarios[s] for s in data_50.experiment.values]
+      for i in np.arange(len(experiments)):
+        try:
+          ax.plot(data_50.year, data_50[i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.3)
+          ax.fill_between(data_50.year, data_90[i,:], data_10[i,:], alpha=0.05, color=f'{colors[i]}')
+        except Exception as e: print(f"Error: {type(e).__name__}: {e}")
+    else:
+      years = data.coords['year'].values
+      legend = data.model.values
+      for i, model in enumerate(data.coords['model'].values):
+        try:
+          ax.plot(years, data.sel(model=model).values.squeeze(), color=f'{colors[i%len(colors)]}', label=model, linewidth=1.3)
+        except Exception as e: print(f"Error: {type(e).__name__}: {e}")
+
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles, labels, loc='upper left', frameon=False)
 
@@ -218,13 +228,15 @@ try:
     # OUTPUT
     fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.png')
     plt.show()
+  except Exception as e:
+    print(f"- failed viz\nError: {type(e).__name__}: {e}")
+    traceback.print_exc(limit=1)
 
-  if variable == 'temperature':
-    chart(zero=preindustrial_temp, reference_lines=[0, 2])
-  else: 
-    chart(reference_lines=[preindustrial_temp, 32])
-except Exception as e:
-  print(f'- failed {model}')
-  print(f"Error: {type(e).__name__}: {e}")
+  
 
-#print(nodata)
+if variable == 'temperature':
+  chart(zero=preindustrial_temp, reference_lines=[0, 2])
+  #chart(what='series')
+  #chart()
+else: 
+  chart(reference_lines=[preindustrial_temp, 32])

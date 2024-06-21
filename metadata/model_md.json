@@ -1,18 +1,20 @@
 {  
 "validated_models": [
-  "CanESM5-CanOE", "CAMS-CSM1-0", "KACE-1-0-G", "CNRM-ESM2-1", "FIO-ESM-2-0", "INM-CM5-0", "NESM3", "MIROC6", "ACCESS-CM2", "CNRM-CM6-1-HR", "MRI-ESM2-0", "MIROC-ES2L", "IPSL-CM6A-LR", "CanESM5", "BCC-CSM2-MR", "GFDL-ESM4"
+  "CanESM5-CanOE", "CAMS-CSM1-0", "KACE-1-0-G", "CNRM-ESM2-1",  "INM-CM5-0", "NESM3", "MIROC6", "ACCESS-CM2", "MRI-ESM2-0", "MIROC-ES2L", "IPSL-CM6A-LR", "BCC-CSM2-MR", "GFDL-ESM4", 
+  "TaiESM1", "CIESM"
 ],
 
+"no-file-to-open":["CNRM-CM6-1-HR", "CMCC-CM2-SR5", "FIO-ESM-2-0", "GISS-E2-2-G", "GISS-E2-1-H", "MPI-ESM1-2-HR", "CanESM5", "MPI-ESM1-2-HR", "CanESM5"],
+
+
+
+"nodata-not-loaded": [   "E3SM-1-0",  "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0", "HadGEM3-GC31-LL", "HadGEM3-GC31-MM", "IITM-ESM", "NorESM2-LM", "MPI-ESM1-2-L",   "CESM2-WACCM", "ACCESS-CM2", "ACCESS-ESM1-5"],
+"missing-data":{"missing2015-2050":["FGOALS-f3-L", "MCM-UA-1-0", "INM-CM4-8", 
+  "EC-Earth3", "EC-Earth3-Veg", "NorESM2-MM", "AWI-CM-1-1-MR", "CESM2", "UKESM1-0-LL"
+]}, 
+
 "probably_hot": ["CAMS-CSM1-0", "CNRM-CM6-1-HR", "CNRM-CM6-1"],
-
-"nodata-not-loaded": ["TaiESM1", "CIESM","MPI-ESM1-2-HR", "CESM2", "EC-Earth3", "NorESM2-MM", "AWI-CM-1-1-MR", "UKESM1-0-LL", "CMCC-CM2-SR5", "GISS-E2-1-H", "GISS-E2-2-G", "E3SM-1-0",  "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0"],
-"missing-data":{"missing2015-2050":["FGOALS-f3-L"], "almost-all":["FGOALS-g3"]},
-"errors": {"ValueError: Axis limits cannot be NaN or Inf:": 
-  ["GISS-E2-1-G", "EC-Earth3-Veg", "HadGEM3-GC31-LL", "HadGEM3-GC31-MM", "IITM-ESM", "NorESM2-LM", "MPI-ESM1-2-L", "INM-CM4-8",  "CESM2-WACCM", "ACCESS-CM2", "ACCESS-ESM1-5"], 
-"ValueError: No lat lon": 
-  ["MCM-UA-1-0"]},
-
-"smaller_models": ["IPSL-CM6A-LR", "MIROC-ES2L",  "HadGEM3-GC31-LL", "INM-CM5-0",  "UKESM1-0-LL" ],
+"smaller_models4testing": ["IPSL-CM6A-LR", "MIROC-ES2L",  "HadGEM3-GC31-LL", "INM-CM5-0",  "UKESM1-0-LL" ],
 
 "source": "ccrs from model weighting by historical accuracy: esd.copernicus.org/articles/11/995/2020/",
 "model_tcrs": {

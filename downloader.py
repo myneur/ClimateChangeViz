@@ -1,10 +1,27 @@
 import cdsapi
 import util
 import os
+import urllib3 
+urllib3.disable_warnings() # Disable warnings for data download via API
 
 c = cdsapi.Client()
 
 status = util.loadMD('status')
+
+def metadata(models, experiments, date=2014): 
+  metadata = []
+  for model in models: 
+    for experiment in experiments:
+      date = f'{date}-01-01/{date}-12-31'
+      metadata = (c.retrieve('projections-cmip6', {'format': 'zip','temporal_resolution': 'monthly','experiment': 'historical','level': 'single_levels','variable': 'tas','model': model,'date': date }))
+      #metadata.append(c.retrieve('projections-cmip6', {'format': 'zip','temporal_resolution': 'monthly','experiment': 'historical','level': 'single_levels','variable': 'tas','model': model,'date': date }))
+      
+      metadata_json = metadata.download() 
+      with open(metadata_json, 'r') as f:
+          data = json.load(f)
+      print(data['models'])
+      print(data['experiments'])
+      print(data['date_ranges'])
 
 def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, forecast_from=2015): # WIP
   unavailable_experiments = status['unavailable_experiments'][variable]  
