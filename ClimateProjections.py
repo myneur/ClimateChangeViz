@@ -45,7 +45,7 @@ import traceback
 
 #variable = 'temperature'
 variable = 'max_temperature'
-stacked = False
+stacked = True
 
 
 experiments = ['historical', 'ssp119', 'ssp126', 'ssp245'] # removed for now: 'ssp534os', 'ssp570', 'ssp585'
@@ -77,6 +77,7 @@ if variable == 'temperature':
   download(models, experiments, DATADIR, mark_failing_scenarios=True, forecast_from=forecast_from)
 else:
   models = md["validated_max_temp"]
+  models = []
   experiments = ['historical', 'ssp126', 'ssp245']
   colors = ['black','#61A3D2','#EE7F00', '#E34D21']
   experiments = ['historical', 'ssp245']
@@ -126,32 +127,40 @@ def geog_agg(fn, buckets=False, area=None):
     # Aggregate in time
     if var == 'tasmax':
       if buckets:
-        da_yr = (da_agg >= 30).resample(time='A').sum(dim='time') #.resample(time='ME') 
+        # single count
+        #da_yr = (da_agg >= (30+K)).resample(time='YE').sum(dim='time') #.resample(time='ME') 
+        
+        # buckets
         #bucket = xr.Dataset({'bucket': (('30-35', '35+'), 
         #    [(da_agg >= 30) & (da_agg < 35).resample(time='A').sum(dim='time'), 
         #    (da_agg >= 35).resample(time='A').sum(dim='time')])})
         # OR
-        #t30 = ((da_agg >= 30) & (da_agg < 35)).resample(time='A').sum(dim='time')
-        #t35 = (da_agg >= 35).resample(time='A').sum(dim='time')
-        #bucket = xr.Dataset({'bucket': (('bins', 'time'), [t30, t35])},
-        #coords={'bins': ['30-35', '35+'],'time': t30.time})
+        t30 = ((da_agg >= (30+K)) & (da_agg < (35+K))).resample(time='YE').sum(dim='time')
+        t35 = (da_agg >= (35+K)).resample(time='YE').sum(dim='time')
+        da_yr = xr.Dataset(
+          {'bucket': (('bins', 'time'), [t30, t35])},
+          coords={'bins': ['30-35', '35+'],'time': t30.time})
+
+        da_yr = da_yr.assign_coords(year=da_yr['time'].dt.year)
+        da_yr = da_yr.drop_vars('time')
+        da_yr = da_yr.rename({'time': 'year'})
+        
       else:
-        global temp
-        temp = da_agg-K
         da_yr = da_agg.groupby('time.year').max()
     else: 
       da_yr = da_agg.groupby('time.year').mean()
 
-    da_yr = da_yr - K # °C
+    if not buckets:
+      da_yr = da_yr - K # °C
     
     # Dimensions
     da_yr = da_yr.assign_coords(model=mod)
     da_yr = da_yr.expand_dims('model')
     da_yr = da_yr.assign_coords(experiment=exp)
     da_yr = da_yr.expand_dims('experiment')
+
     # Attributes
     #ds.attrs['height'] =
-
     da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
     return da_yr
   except Exception as e:
@@ -188,6 +197,7 @@ try:
     if 'historical' in ds['experiment']:
       ds = ds.sel(year=ds['year'] < forecast_from)
     return ds
+
   data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
 
   if not stacked:
@@ -199,16 +209,7 @@ try:
     preindustrial_temp = data_50.sel(year=slice(1850, 1900)).mean(dim='year').mean(dim='experiment').item()
 
   else:
-    # Convert xarray to pandas DataFrame
-    df = data_ds_filtered.to_dataframe().reset_index()
-    # Group by year and get the sum for each bucket
-    pivot_df = df.pivot(index='year', columns='bucket', values='count')
-    print(pivot_df)
-    pivot_df.plot(kind='bar', stacked=True, figsize=(12, 7))
-
-    print("Exit on 206 line")
-    exit()
-
+    data = data_ds
 
   models_read = set(data.model.values.flat)
   model_count = len(models_read)
@@ -299,7 +300,7 @@ def chart(what='mean', zero=None, reference_lines=None):
     fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.svg')
     plt.show()
   except Exception as e:
-    print(f"- failed viz\nError: {type(e).__name__}: {e}")
+    print(f"Visualization\nError: {type(e).__name__}: {e}")
     traceback.print_exc(limit=1)
 
 
@@ -307,16 +308,27 @@ def chart(what='mean', zero=None, reference_lines=None):
 def chartstacked(what='series'):
   try:
     fig, ax = plt.subplots(1, 1)
-    #ax.set(title=f'Global temperature projections ({model_count} CMIP6 models)', ylabel='Temperature')  
+    ax.set(title=f'Local tropic days projection ({model_count} CMIP6 models)', ylabel='Tropic days annualy')  
 
     xaxis_climatic(ax)
-    
-    years = data.coords['year'].values
-    #legend = [f'<{str(buckets[0])}', f'>={str(buckets[0])}', f'>={str(buckets[1])}']
-    for i, bucket in enumerate(legend):
-      counts = data.sel(bucket=bucket).values
-      ax.plot(years, counts, color=f'{colors[i % len(colors)]}', label=bucket, linewidth=1.3)
 
+    years = data.year.values #years = data.coords['year'].values
+
+    # one value, no buckets
+    #tasmax_max = data.tasmax.max(dim='experiment').mean(dim='model')
+    #plt.bar(years, tasmax_max.squeeze().values)
+
+    bucket_values = data.bucket.squeeze()  
+    bins = data.bins.values
+    #bins = sorted(bins, reverse=True)
+    bottom = np.zeros(len(years)) 
+    bucket_sums = bucket_values.mean(dim='model').max(dim='experiment')
+    palette = ["#FCED8D", "#FF9F47", "#E04B25", "#7A0B0A", "#330024"][2:]
+    colors = plt.cm.hot(range(len(bins)))
+    for i, bin_label in enumerate(bins):
+        bin_values = bucket_sums.sel(bins=bin_label).values
+        ax.bar(years, bin_values, label=f'{bin_label} °C', bottom=bottom, color=palette[i])
+        bottom += bin_values
 
     handles, labels = ax.get_legend_handles_labels()
     ax.legend(handles, labels, loc='upper left', frameon=False)
@@ -328,7 +340,7 @@ def chartstacked(what='series'):
 
     # OUTPUT
     fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.png')
-    fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.svg')
+    #fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.svg')
     plt.show()
   except Exception as e:
     print(f"- failed viz\nError: {type(e).__name__}: {e}")
