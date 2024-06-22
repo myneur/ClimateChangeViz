@@ -1,7 +1,7 @@
 # TODO
 # unziping to different folders not to interfere
 # 0. aggregated models by satte as series to show how big is the coverage of the models
-# 1. max temp: means of Jun-Jul afternoon instad of yearly max to get more realistic projections?
+# 1. max temp: means of summer months afternoon instad of yearly max to get more realistic projections?
 # 2. plot range of forecast to the right edge of the chart
 # API keys from cds.climate.copernicus.eu must be in ~/.cdsapirc
 
@@ -27,6 +27,8 @@ import matplotlib
 import matplotlib.path as mpath
 import matplotlib.pyplot as plt
 
+import datetime
+import bisect
 import cftime
 import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
@@ -41,10 +43,13 @@ import traceback
 # SETUP #
 # What to analyze:
 
-variable = 'temperature'
-#variable = 'max_temperature'
+#variable = 'temperature'
+variable = 'max_temperature'
+stacked = False
+
 
 experiments = ['historical', 'ssp119', 'ssp126', 'ssp245'] # removed for now: 'ssp534os', 'ssp570', 'ssp585'
+colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
 scenarios = {
     'historical': "hindcast", 
     'ssp119': "1.5°: carbon neutral in 2050", 
@@ -61,53 +66,98 @@ variables = {
 
 md = util.loadMD('model_md')
 
+current_year = datetime.datetime.now().year
 forecast_from = 2015 # hidcast data is not available beyond 2014 anyway for most models
 DATADIR = f'/Users/myneur/Downloads/ClimateData/{variable}/'
 
 
 models = md['validated_models'] # models to be downloaded – when empty, only already downloaded files will be visualized
+# mark_failing_scenarios=True saves unavailable experiments not to retry downloading. Clean it in metadata/status.json
 if variable == 'temperature':
   download(models, experiments, DATADIR, mark_failing_scenarios=True, forecast_from=forecast_from)
 else:
-  download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency='monthly', mark_failing_scenarios=True, forecast_from=forecast_from)
+  models = md["validated_max_temp"]
+  experiments = ['historical', 'ssp126', 'ssp245']
+  colors = ['black','#61A3D2','#EE7F00', '#E34D21']
+  experiments = ['historical', 'ssp245']
+  #download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency='monthly', mark_failing_scenarios=True, forecast_from=forecast_from)
+  download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency='daily', mark_failing_scenarios=True, forecast_from=forecast_from)
 
 cmip6_nc = list()
 cmip6_nc_rel = glob(f'{DATADIR}tas*.nc')
 for i in cmip6_nc_rel:
     cmip6_nc.append(os.path.basename(i))
 
-def geog_agg(fn):
+K = 273.15
+def geog_agg(fn, buckets=False, area=None):
   try:
     ds = xr.open_dataset(f'{DATADIR}{fn}')
+
+    # Context
     exp = ds.attrs['experiment_id']
     mod = ds.attrs['source_id']
+
+    # Fixing inconsistent naming
+    if 'lat' in ds.coords: lat, lon = 'lat', 'lon' 
+    else: lat, lon = 'latitude', 'longitude'
     
-    # selected variable
-    da = ds[variables[variable]['dataset']] # 'tas' or 'tasmax'
+    # Narrow to selected variable
+    var = 'tasmax' if 'tasmax' in ds else 'tas'
+    da = ds[var] 
     if 'height' in da.coords:
       da = da.drop_vars('height')
+
+    if area: 
+      if len(area)>3:
+        da.sel({lat: slice(area[0], area[2]), lon: slice(area[1], area[3])})# N-S # W-E
+      else:
+        da.sel({lat: lat_value, lon: lon_value}, method='nearest')
     
-    weights = np.cos(np.deg2rad(da.lat))
-    weights.name = "weights"
-    da_weighted = da.weighted(weights)
+    # Aggregate in spatially 
+    if var == 'tasmax':
+      da_agg = da.max(['lat', 'lon'])
+    else:
+      # Weight according to the latitude
+      weights = np.cos(np.deg2rad(da.lat))
+      weights.name = "weights"
+      da_weighted = da.weighted(weights)
+      da_agg = da_weighted.mean(['lat', 'lon'])
 
-    if 'lat' in ds.coords: lat, lon = 'lat', 'lon' # Fixing various naming
-    else: lat, lon = 'latitude', 'longitude'
-    da_agg = da_weighted.mean(['lat', 'lon'])
+    # Aggregate in time
+    if var == 'tasmax':
+      if buckets:
+        da_yr = (da_agg >= 30).resample(time='A').sum(dim='time') #.resample(time='ME') 
+        #bucket = xr.Dataset({'bucket': (('30-35', '35+'), 
+        #    [(da_agg >= 30) & (da_agg < 35).resample(time='A').sum(dim='time'), 
+        #    (da_agg >= 35).resample(time='A').sum(dim='time')])})
+        # OR
+        #t30 = ((da_agg >= 30) & (da_agg < 35)).resample(time='A').sum(dim='time')
+        #t35 = (da_agg >= 35).resample(time='A').sum(dim='time')
+        #bucket = xr.Dataset({'bucket': (('bins', 'time'), [t30, t35])},
+        #coords={'bins': ['30-35', '35+'],'time': t30.time})
+      else:
+        global temp
+        temp = da_agg-K
+        da_yr = da_agg.groupby('time.year').max()
+    else: 
+      da_yr = da_agg.groupby('time.year').mean()
 
-    da_yr = da_agg.groupby('time.year').mean()
-
-    da_yr = da_yr - 273.15
+    da_yr = da_yr - K # °C
     
+    # Dimensions
     da_yr = da_yr.assign_coords(model=mod)
     da_yr = da_yr.expand_dims('model')
     da_yr = da_yr.assign_coords(experiment=exp)
     da_yr = da_yr.expand_dims('experiment')
-    
+    # Attributes
+    #ds.attrs['height'] =
+
     da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
+    return da_yr
   except Exception as e:
-    print(f"{filename}\nError: {type(e).__name__}: {e}")
+    print(f"{fn}\nError: {type(e).__name__}: {e}")
     traceback.print_exc(limit=1)
+
 
 def aggregate_all():
   for filename in cmip6_nc:
@@ -116,7 +166,7 @@ def aggregate_all():
       candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}')] # TODO: multiple files for multiple years can exist
       if not len(candidate_files):
         print(f'aggregating {model} {experiment}')
-        geog_agg(filename)
+        geog_agg(filename, buckets=stacked)
     except Exception as e:
       print(f'- failed {filename}')
       print(f"Error: {type(e).__name__}: {e}")
@@ -140,13 +190,25 @@ try:
     return ds
   data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
 
-  data = data_ds_filtered[variables[variable]['dataset']]
+  if not stacked:
+    data = data_ds_filtered[variables[variable]['dataset']]
+    data_90 = data.quantile(0.9, dim='model')
+    data_10 = data.quantile(0.1, dim='model')
+    data_50 = data.quantile(0.5, dim='model')
 
-  data_90 = data.quantile(0.9, dim='model')
-  data_10 = data.quantile(0.1, dim='model')
-  data_50 = data.quantile(0.5, dim='model')
+    preindustrial_temp = data_50.sel(year=slice(1850, 1900)).mean(dim='year').mean(dim='experiment').item()
 
-  preindustrial_temp = data_50.sel(year=slice(1850, 1900)).mean(dim='year').mean(dim='experiment').item()
+  else:
+    # Convert xarray to pandas DataFrame
+    df = data_ds_filtered.to_dataframe().reset_index()
+    # Group by year and get the sum for each bucket
+    pivot_df = df.pivot(index='year', columns='bucket', values='count')
+    print(pivot_df)
+    pivot_df.plot(kind='bar', stacked=True, figsize=(12, 7))
+
+    print("Exit on 206 line")
+    exit()
+
 
   models_read = set(data.model.values.flat)
   model_count = len(models_read)
@@ -156,7 +218,24 @@ except Exception as e:
   print(f"\nError: {type(e).__name__}: {e}")
   traceback.print_exc(limit=1)
 
-colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
+
+def xaxis_climatic(ax):
+  ax.set(xlim=(1850, 2100))
+  plt.subplots_adjust(left=.08, right=.97, top=0.95, bottom=0.15)
+  ax.yaxis.label.set_size(14)
+
+  xticks_major = [1850, 2000, 2015, 2050, 2075, 2100]
+  bisect.insort(xticks_major, current_year)
+  xticks_minor = [1900, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
+  xtickvals_minor = ['Industrial Era', 'Baby Boomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
+
+  ax.set_xticks(xticks_major) 
+  ax.set_xticklabels(xticks_major)
+  ax.set_xticks(xticks_minor, minor=True)  
+  ax.set_xticklabels(xtickvals_minor, minor=True, rotation=45, va='bottom', ha='right',  fontstyle='italic', color='#b2b2b2', fontsize=9)
+  ax.xaxis.set_tick_params(which='minor', pad=70, color="white")
+
+  ax.axvline(x=current_year, color='lightgray', linewidth=.5)
 
 def chart(what='mean', zero=None, reference_lines=None):
   try:
@@ -166,10 +245,6 @@ def chart(what='mean', zero=None, reference_lines=None):
     else:
       ax.set(title=f'Maximal temperature (in Czechia) projections ({model_count} CMIP6 models)', ylabel='Max Temperature (°C)')  
 
-    ax.set(xlim=(1850, 2100))
-    plt.subplots_adjust(left=.08, right=.97, top=0.95, bottom=0.15)
-    ax.yaxis.label.set_size(14)
-
     # SCALE
     if zero and not (np.isnan(zero) and not np.isinf(zero)):
       if zero:
@@ -177,26 +252,21 @@ def chart(what='mean', zero=None, reference_lines=None):
         plt.gca().set_yticks([val + zero for val in yticks])
         ax.set_ylim([-1 +zero, 4 + zero])
         plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
-      else:
-        ax.set_ylim([28, 34])
+    else:
+      if False and variable == 'max_temperature':
+        ax.set_ylim([34, 40])
 
-    # X AXIS
-    xticks_major = [1850, 2000, 2015, 2050, 2075, 2100]
-    xtickvals_major = ['1850', '2000', '2015', '2050', '2075', '2100']
-    xticks_minor = [1900, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
-    xtickvals_minor = ['Industrial Era', 'Baby Boomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
-
-    ax.set_xticks(xticks_major)  
-    ax.set_xticklabels(xtickvals_major)
-    ax.set_xticks(xticks_minor, minor=True)  
-    ax.set_xticklabels(xtickvals_minor, minor=True, rotation=45, va='bottom', ha='right',  fontstyle='italic', color='#b2b2b2', fontsize=9)
-    ax.xaxis.set_tick_params(which='minor', pad=70, color="white")
+    xaxis_climatic(ax)
 
     if reference_lines: 
+      if not zero:
+        zero = 0
       ax.axhline(y=zero+reference_lines[0], color='#717174') # base
       for ref in reference_lines[1:]:
         ax.axhline(y=zero+ref, color='#E34D21', linewidth=.5)
       plt.grid(axis='y')
+
+    ax.axvline(x=current_year, color='lightgray', linewidth=.5)
 
     
     # DATA
@@ -220,13 +290,45 @@ def chart(what='mean', zero=None, reference_lines=None):
 
 
     # CONTEXT
-    context = "models: " + ' '.join(map(str, models_read))
+    context = "models: " + ' '.join(map(str, models_read)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
     plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
     print(context)
-    print('CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.')
 
     # OUTPUT
     fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.png')
+    fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.svg')
+    plt.show()
+  except Exception as e:
+    print(f"- failed viz\nError: {type(e).__name__}: {e}")
+    traceback.print_exc(limit=1)
+
+
+
+def chartstacked(what='series'):
+  try:
+    fig, ax = plt.subplots(1, 1)
+    #ax.set(title=f'Global temperature projections ({model_count} CMIP6 models)', ylabel='Temperature')  
+
+    xaxis_climatic(ax)
+    
+    years = data.coords['year'].values
+    #legend = [f'<{str(buckets[0])}', f'>={str(buckets[0])}', f'>={str(buckets[1])}']
+    for i, bucket in enumerate(legend):
+      counts = data.sel(bucket=bucket).values
+      ax.plot(years, counts, color=f'{colors[i % len(colors)]}', label=bucket, linewidth=1.3)
+
+
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, loc='upper left', frameon=False)
+
+    # CONTEXT
+    context = "models: " + ' '.join(map(str, models_read)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
+    plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
+    print(context)
+
+    # OUTPUT
+    fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.png')
+    fig.savefig(f'charts/chart_{variable}_{len(set(data.model.values.flat))}m.svg')
     plt.show()
   except Exception as e:
     print(f"- failed viz\nError: {type(e).__name__}: {e}")
@@ -239,4 +341,7 @@ if variable == 'temperature':
   #chart(what='series')
   #chart()
 else: 
-  chart(reference_lines=[preindustrial_temp, 32])
+  if stacked:
+    chartstacked(what='series')
+  else:
+    chart(reference_lines=[preindustrial_temp, 32])

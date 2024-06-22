@@ -4,9 +4,11 @@ import os
 import urllib3 
 urllib3.disable_warnings() # Disable warnings for data download via API
 
-c = cdsapi.Client()
-
 status = util.loadMD('status')
+
+c = cdsapi.Client()
+#historical_data: {'product': 'reanalysis-era5-single-levels', 'params': {'product_type': 'reanalysis', 'variable': '2m_temperature'}}
+
 
 def metadata(models, experiments, date=2014): 
   metadata = []
@@ -25,7 +27,7 @@ def metadata(models, experiments, date=2014):
 
 def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, forecast_from=2015): # WIP
   unavailable_experiments = status['unavailable_experiments'][variable]  
-  separator = '-'*60
+  separator = '='*60
   print(f'\n\nRequesting {variable} {frequency} {experiments} for {models}\n{separator}\n')
   for experiment in experiments:
     if experiment == 'historical':
@@ -49,6 +51,9 @@ def download(models, experiments, DATADIR, variable='near_surface_air_temperatur
               'model': f'{model}',
               'date': date
               }
+            if frequency == 'daily':
+              params['month'] = ['06', '07', '08']
+
             if area: params['area'] = area
             print(f'REQUESTING: {experiment} from {model} for {date}')
             c.retrieve('projections-cmip6', params, filename)

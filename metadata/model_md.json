@@ -1,13 +1,14 @@
 {  
-"validated_models": [
-  "CanESM5-CanOE", "CAMS-CSM1-0", "KACE-1-0-G", "CNRM-ESM2-1",  "INM-CM5-0", "NESM3", "MIROC6", "ACCESS-CM2", "MRI-ESM2-0", "MIROC-ES2L", "IPSL-CM6A-LR", "BCC-CSM2-MR", "GFDL-ESM4", 
-  "TaiESM1", "CIESM"
-],
-
-"no-file-to-open":["CNRM-CM6-1-HR", "CMCC-CM2-SR5", "FIO-ESM-2-0", "GISS-E2-2-G", "GISS-E2-1-H", "MPI-ESM1-2-HR", "CanESM5", "MPI-ESM1-2-HR", "CanESM5"],
+"validated_models": 
+["FGOALS-g3", "CNRM-ESM2-1", "KACE-1-0-G", "FIO-ESM-2-0", "INM-CM5-0", "CanESM5", "IITM-ESM", "IPSL-CM6A-LR", "TaiESM1", "NESM3", "CNRM-CM6-1-HR", "BCC-CSM2-MR", "ACCESS-CM2", "HadGEM3-GC31-MM", "CNRM-CM6-1", "CanESM5-CanOE", "CAMS-CSM1-0", "MIROC-ES2L", "GFDL-ESM4", "MIROC6", "MRI-ESM2-0"],
+"validated_max_temp":
+["IPSL-CM6A-LR", "MIROC-ES2L", "INM-CM5-0", "CanESM5-CanOE", "GFDL-ESM4", "ACCESS-CM2", "BCC-CSM2-MR", "MRI-ESM2-0", "MIROC6", "CNRM-CM6-1-HR", "FIO-ESM-2-0", "CIESM", "CNRM-ESM2-1", "NESM3"],
 
 
+"previous_set":["IPSL-CM6A-LR", "MIROC-ES2L", "INM-CM5-0", "CanESM5-CanOE", "CAMS-CSM1-0", "KACE-1-0-G", "CNRM-ESM2-1",  "NESM3", "MIROC6", "ACCESS-CM2", "MRI-ESM2-0", "BCC-CSM2-MR", "GFDL-ESM4", "TaiESM1"],
 
+
+"no-file-to-open":["CIESM", "CNRM-CM6-1-HR", "CMCC-CM2-SR5", "FIO-ESM-2-0", "GISS-E2-2-G", "GISS-E2-1-H", "MPI-ESM1-2-HR", "CanESM5", "MPI-ESM1-2-HR", "CanESM5"],
 "nodata-not-loaded": [   "E3SM-1-0",  "GFDL-CM4", "CESM2-WACCM-FV2", "BCC-ESM1", "SAM0-UNICON", "NorCPM1", "MPI-ESM-1-2-HAM", "CAS-ESM2-0", "HadGEM3-GC31-LL", "HadGEM3-GC31-MM", "IITM-ESM", "NorESM2-LM", "MPI-ESM1-2-L",   "CESM2-WACCM", "ACCESS-CM2", "ACCESS-ESM1-5"],
 "missing-data":{"missing2015-2050":["FGOALS-f3-L", "MCM-UA-1-0", "INM-CM4-8", 
   "EC-Earth3", "EC-Earth3-Veg", "NorESM2-MM", "AWI-CM-1-1-MR", "CESM2", "UKESM1-0-LL"
@@ -144,7 +145,7 @@
 "Other":[
 "TaiESM1",
 "UKESM1-0-LL"]}, 
-"area": {"cz": [18, 48, 12, 51]},
+"area": {"cz": [51, 12, 48, 18], "Lille": [51, 3, 50, 4]},
 "generations":{
   "1927": "Greatest",
   "1945": "Silent",
