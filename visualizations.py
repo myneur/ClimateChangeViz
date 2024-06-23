@@ -26,7 +26,8 @@ class Charter:
       fig, ax = plt.subplots(1, 1)
       if self.size: fig.set_size_inches(self.size[0], self.size[1])
       if title: ax.set(title=title)  
-      if ylabel: ax.set(title=title)  
+      ax.text(0.5, .98, "Goal of keeping rise below 2° (ssp126)", ha='center', va='center', transform=ax.transAxes, fontsize=12, color='lightgray')
+      if ylabel: ax.set(ylabel=ylabel)  
 
       models = set(self.data.model.values.flat)
 
@@ -71,7 +72,7 @@ class Charter:
       fig, ax = plt.subplots(1, 1)
       if self.size: fig.set_size_inches(self.size[0], self.size[1])
       if title: ax.set(title=title)  
-      if ylabel: ax.set(title=title)  
+      if ylabel: ax.set(ylabel=ylabel)   
 
       models = set(self.data.model.values.flat)
       

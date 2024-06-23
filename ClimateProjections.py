@@ -13,9 +13,9 @@
 # 2. plot range of forecast to the right edge of the chart
 
 # WHAT to plot
-#variable = 'temperature'
+variable = 'temperature'
 #variable = 'max_temperature'  
-variable = 'discovery'
+#variable = 'discovery'
 stacked = False # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
 
@@ -79,7 +79,7 @@ models = md[variable] # models to be downloaded – when empty, only already dow
 # DOWNLOADING 
 
 if variable in ('temperature', 'discovery'):
-  downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+  unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
 elif variable == 'max_temperature':
   experiments = ['historical', 'ssp245']
   frequency='daily'
@@ -191,9 +191,12 @@ try:
     return ds
   data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
 
+  # merging data series of different periods for the same model
+  data_ds_filtered = data_ds.groupby('model').mean('model')
+  print (data_ds_filtered)
 
 # VISUALIZE
-  model_count = set(data_ds_filtered.model.values.flat)
+
   if stacked:
 
     # COUNTS IN BUCKETS
@@ -211,6 +214,16 @@ try:
       # TEMPERATURES
       data = data_ds_filtered[variables[variable]['dataset']]
 
+      # drop models with some unavailable experiments
+      #unavailable_models = [list(unavailable_experiments.values())]
+      #unavailable_models = [val for models in unavailable_experiments.values() for val in models]
+      #data = data.sel(model=~data.model.isin(unavailable_models))
+      # OR
+      # keep the most of the data 
+      #data = data.sel(experiment=~data.experiment.isin(['ssp119']))
+      #data = data.sel(model=~data.model.isin(unavailable_experiments['ssp245']))
+      # TODO must be done from the dataset, not to risk data inconsistencies
+
       data_90 = data.quantile(0.9, dim='model')
       data_10 = data.quantile(0.1, dim='model')
       data_50 = data.quantile(0.5, dim='model')
@@ -220,10 +233,12 @@ try:
       preindustrial_temp = data_50.sel(year=slice(1850, 1900)).mean(dim='year').mean(dim='experiment').item()
 
       if variable == 'temperature':
-        
-        chart.plot(title=f'Global temperature projections ({len(model_count)} CMIP6 models)', ylabel='Temperature', zero=preindustrial_temp, reference_lines=[0, 2], labels=scenarios['to-visualize'])
+        model_count = set(data.model.values.flat)
+        chart.plot(title=f'Global temperature projections ({len(model_count)} CMIP6 models)', zero=preindustrial_temp, reference_lines=[0, 2], labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
+        #chart.plot(what={'experiment': "ssp126"})
       else:
         maxes = {'Madrid': 35}
+        model_count = set(data_ds_filtered.model.values.flat)
         chart.plot(title=f'Maximal temperature (in Czechia) projections ({len(model_count)} CMIP6 models)', ylabel='Max Temperature (°C)', reference_lines=[preindustrial_temp], labels=scenarios['to-visualize'])
 
 except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)

@@ -68,11 +68,16 @@ def download(models, experiments, DATADIR, variable='near_surface_air_temperatur
         print(f'\nSKIPPING UNAVAILABLE experiment {experiment} for {model}')
 
   if unavailable_experiments:
-    print(f"\nUNAVAILABLE:\n{unavailable_experiments}")
+    print(f"\nUNAVAILABLE:")
+    for experiment in unavailable_experiments.keys():
+      print (f"{experiment}: {' '.join(unavailable_experiments[experiment])}")
+    print("\n")
   
   if(mark_failing_scenarios):
     status['unavailable_experiments'][variable] = unavailable_experiments
     util.saveMD(status, 'status') 
+
+  return unavailable_experiments
 
 def reanalysis():
   c.retrieve('reanalysis-era5-single-levels', {
