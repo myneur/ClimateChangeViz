@@ -3,7 +3,10 @@
 ## See http://matplotlib.org/users/customizing.html#the-matplotlibrc-file for
 ## more details on the paths which are checked for the configuration file.
 
-figure.figsize: 16, 8
+figure.figsize: 12, 8
+
+axes.titlesize: 18
+axes.labelsize: 20
 
 axes.spines.top: False
 axes.spines.bottom: False
@@ -15,4 +18,9 @@ grid.alpha: 0.5
 grid.linestyle: (0, (3, 9)) 
 
 ytick.color: 717174
+ytick.labelsize: 10
+
 xtick.color: 717174
+xtick.labelsize: 12
+
+legend.fontsize: 14

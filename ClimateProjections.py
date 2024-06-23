@@ -14,9 +14,11 @@
 
 # WHAT to plot
 #variable = 'temperature'
-variable = 'max_temperature'
-stacked = False # aggregate into buckets
-reaggregate = True # compute aggregations regardles if they already exist
+variable = 'max_temperature'  
+stacked = True # aggregate into buckets
+reaggregate = False # compute aggregations regardles if they already exist
+
+#variable = 'history' # not working yet: https://web.archive.org/web/20240516185454/https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-land?tab=form
 
 scenarios = {
   'to-visualize': {
@@ -53,7 +55,7 @@ from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import cartopy.feature as cfeature
 
 # Utils
-from downloader import download
+import downloader
 import visualizations
 
 import util
@@ -64,7 +66,8 @@ forecast_from = 2015 # hidcast data not available beyond 2014 anyway for most mo
 experiments = scenarios['to-visualize'].keys()
 variables = {
   'temperature': {'request': 'near_surface_air_temperature', 'dataset': 'tas'},
-  'max_temperature': {'request': 'daily_maximum_near_surface_air_temperature', 'dataset': 'tasmax'}
+  'max_temperature': {'request': 'daily_maximum_near_surface_air_temperature', 'dataset': 'tasmax', 
+  'historical': {'request': '2m_temperature', 'dataset': 'tas'}}
 }
 
 md = util.loadMD('model_md')
@@ -74,14 +77,15 @@ models = md['validated_models'] # models to be downloaded – when empty, only a
 # DOWNLOADING 
 
 if variable == 'temperature':
-  download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
-else:
+  downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+elif variable == 'max_temperature':
   models = md["validated_max_temp"]
-  models = []
-  experiments = ['historical', 'ssp126', 'ssp245']
   experiments = ['historical', 'ssp245']
-  #download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency='monthly', mark_failing_scenarios=True, forecast_from=forecast_from)
-  download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency='daily', mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+  frequency='daily'
+  downloader.download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency=frequency, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+else:
+  downloader.reanalysis()
+
 
 cmip6_nc = list()
 cmip6_nc_rel = glob(f'{DATADIR}tas*.nc')
@@ -188,12 +192,12 @@ try:
 
 
 # VISUALIZE
-
+  model_count = set(data_ds_filtered.model.values.flat)
   if stacked:
     chart = visualizations.Charter(data_ds_filtered, variable=variable)
 
     if variable == 'max_temperature':    
-      chart.chartstacked(what='series')
+      chart.stack(title=f'Tropic days (in Czechia) projection ({len(models)} CMIP6 models)', ylabel='Tropic days annualy', what='series', marker=forecast_from)
   
   else: 
       data = data_ds_filtered[variables[variable]['dataset']]
@@ -208,10 +212,10 @@ try:
 
       if variable == 'temperature':
         
-        chart.chart(zero=preindustrial_temp, reference_lines=[0, 2], labels=scenarios['to-visualize'])
+        chart.plot(title=f'Global temperature projections ({len(model_count)} CMIP6 models)', ylabel='Temperature', zero=preindustrial_temp, reference_lines=[0, 2], labels=scenarios['to-visualize'])
         #chart(what='series')
       else:
-        
-        chart.chart(reference_lines=[preindustrial_temp], labels=scenarios['to-visualize'])
+        maxes = {'Madrid': 35}
+        chart.plot(title=f'Maximal temperature (in Czechia) projections ({len(model_count)} CMIP6 models)', ylabel='Max Temperature (°C)', reference_lines=[preindustrial_temp], labels=scenarios['to-visualize'])
 
 except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)

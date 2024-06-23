@@ -7,8 +7,6 @@ urllib3.disable_warnings() # Disable warnings for data download via API
 status = util.loadMD('status')
 
 c = cdsapi.Client()
-#historical_data: {'product': 'reanalysis-era5-single-levels', 'params': {'product_type': 'reanalysis', 'variable': '2m_temperature'}}
-
 
 def metadata(models, experiments, date=2014): 
   metadata = []
@@ -75,3 +73,11 @@ def download(models, experiments, DATADIR, variable='near_surface_air_temperatur
   if(mark_failing_scenarios):
     status['unavailable_experiments'][variable] = unavailable_experiments
     util.saveMD(status, 'status') 
+
+def reanalysis():
+  c.retrieve('reanalysis-era5-single-levels', {
+    'product_type': 'reanalysis', 
+    'variable': '2m_temperature'
+    #'year': list(range(1910,1918+1)),
+    #'area': [51, 12, 48, 18]
+    })
