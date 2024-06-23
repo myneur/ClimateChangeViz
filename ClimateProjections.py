@@ -15,7 +15,7 @@
 # WHAT to plot
 #variable = 'temperature'
 variable = 'max_temperature'  
-stacked = True # aggregate into buckets
+stacked = False # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
 
 #variable = 'history' # not working yet: https://web.archive.org/web/20240516185454/https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-land?tab=form

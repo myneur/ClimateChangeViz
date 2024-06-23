@@ -2,6 +2,7 @@
 import matplotlib
 import matplotlib.path as mpath
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 import numpy as np
 
@@ -65,7 +66,7 @@ class Charter:
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-  def plot(self, what='mean', title=None, ylabel=None, zero=None, reference_lines=None, labels=None):
+  def plot(self, what='mean', title=None, ylabel=None, zero=None, reference_lines=None, labels=None, marker=None):
     try:
       fig, ax = plt.subplots(1, 1)
       if self.size: fig.set_size_inches(self.size[0], self.size[1])
@@ -82,10 +83,11 @@ class Charter:
           ax.set_ylim([-1 +zero, 4 + zero])
           plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
       else:
-        if False and self.variable == 'max_temperature':
-          ax.set_ylim([34, 40])
+        if self.variable == 'max_temperature':
+          #ax.set_ylim([34, 40])
+          ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
 
-      self._xaxis_climatic(ax, marker='now')
+      self._xaxis_climatic(ax, marker=marker)
 
       if reference_lines: 
         if not zero:
