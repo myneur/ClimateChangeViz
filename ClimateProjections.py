@@ -14,7 +14,8 @@
 
 # WHAT to plot
 #variable = 'temperature'
-variable = 'max_temperature'  
+#variable = 'max_temperature'  
+variable = 'discovery'
 stacked = False # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
 
@@ -66,24 +67,24 @@ forecast_from = 2015 # hidcast data not available beyond 2014 anyway for most mo
 experiments = scenarios['to-visualize'].keys()
 variables = {
   'temperature': {'request': 'near_surface_air_temperature', 'dataset': 'tas'},
+  'discovery': {'request': 'near_surface_air_temperature', 'dataset': 'tas'},
   'max_temperature': {'request': 'daily_maximum_near_surface_air_temperature', 'dataset': 'tasmax', 
   'historical': {'request': '2m_temperature', 'dataset': 'tas'}}
 }
 
 md = util.loadMD('model_md')
 
-models = md['validated_models'] # models to be downloaded – when empty, only already downloaded files will be visualized
+models = md[variable] # models to be downloaded – when empty, only already downloaded files will be visualized
 
 # DOWNLOADING 
 
-if variable == 'temperature':
+if variable in ('temperature', 'discovery'):
   downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
 elif variable == 'max_temperature':
-  models = md["validated_max_temp"]
   experiments = ['historical', 'ssp245']
   frequency='daily'
   downloader.download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency=frequency, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
-else:
+elif variable == 'history':
   downloader.reanalysis()
 
 
@@ -194,12 +195,20 @@ try:
 # VISUALIZE
   model_count = set(data_ds_filtered.model.values.flat)
   if stacked:
+
+    # COUNTS IN BUCKETS
     chart = visualizations.Charter(data_ds_filtered, variable=variable)
 
     if variable == 'max_temperature':    
-      chart.stack(title=f'Tropic days (in Czechia) projection ({len(models)} CMIP6 models)', ylabel='Tropic days annualy', what='series', marker=forecast_from)
+      chart.stack(title=f'Tropic days (in Czechia) projection ({len(models)} CMIP6 models)', ylabel='Tropic days annualy', marker=forecast_from)
   
   else: 
+    if variable == 'discovery':
+      chart = visualizations.Charter(data_ds, variable=variable)
+      chart.plot(what={'experiment': "ssp126"})
+    else:
+
+      # TEMPERATURES
       data = data_ds_filtered[variables[variable]['dataset']]
 
       data_90 = data.quantile(0.9, dim='model')
@@ -213,7 +222,6 @@ try:
       if variable == 'temperature':
         
         chart.plot(title=f'Global temperature projections ({len(model_count)} CMIP6 models)', ylabel='Temperature', zero=preindustrial_temp, reference_lines=[0, 2], labels=scenarios['to-visualize'])
-        #chart(what='series')
       else:
         maxes = {'Madrid': 35}
         chart.plot(title=f'Maximal temperature (in Czechia) projections ({len(model_count)} CMIP6 models)', ylabel='Max Temperature (°C)', reference_lines=[preindustrial_temp], labels=scenarios['to-visualize'])

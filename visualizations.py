@@ -21,7 +21,7 @@ class Charter:
     self.format = format
     self.size = size
 
-  def stack(self, title=None, ylabel=None, what='series', marker=None):
+  def stack(self, title=None, ylabel=None, marker=None):
     try:
       fig, ax = plt.subplots(1, 1)
       if self.size: fig.set_size_inches(self.size[0], self.size[1])
@@ -108,14 +108,33 @@ class Charter:
             
             alpha=0.03 if legend[i] == 'hindcast' else 0.07
             ax.fill_between(self.data.year, self.range['top'][i,:], self.range['bottom'][i,:], alpha=alpha, color=f'{colors[i]}')
-          except Exception as e: print(f"Error: {type(e).__name__}: {e}")
+          except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
       else:
         years = self.data.coords['year'].values
         legend = self.data.model.values
-        for i, model in enumerate(self.data.coords['model'].values):
+
+        data_squeezed = self.data.groupby('model').mean()
+        dimension = list(what.keys())[0]
+        data_squeezed = data_squeezed.where(data_squeezed[dimension] == what[dimension], drop=True)
+
+        for i, model in enumerate(data_squeezed.coords['model'].values):
           try:
-            ax.plot(years, self.data.sel(model=model).values.squeeze(), color=f'{colors[i%len(colors)]}', label=model, linewidth=1.8)
-          except Exception as e: print(f"Error: {type(e).__name__}: {e}")
+            model_data = data_squeezed.sel(model=model, drop=True)
+            
+            # making it robust to inconsistencies in the data
+            data = model_data[list(data_squeezed.data_vars)[0] ].squeeze()
+            data = data.dropna(dim='year') 
+            aligned_years = data.coords['year'].values  
+
+            assert len(aligned_years) == len(data.values), "Mismatch in the dimensions of years and the selected data"
+            ax.plot(aligned_years, data.values, color=f'{colors[i % len(colors)]}', label=model, linewidth=1.8)
+
+            # TODO make it robust for multile models with the same name
+
+          except Exception as e: 
+            print(f"Error in {model}: {type(e).__name__}: {e}"); 
+            #traceback.print_exc(limit=1)
+            #print(data)
 
       handles, labels = ax.get_legend_handles_labels()
       ax.legend(handles, labels, loc='upper left', frameon=False)
