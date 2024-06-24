@@ -14,9 +14,9 @@
 
 # WHAT to plot
 variable = 'temperature'
-#variable = 'max_temperature'  
+variable = 'max_temperature'  
 #variable = 'discovery'
-stacked = False # aggregate into buckets
+stacked = True # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
 
 #variable = 'history' # not working yet: https://web.archive.org/web/20240516185454/https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-land?tab=form
@@ -207,8 +207,9 @@ try:
     # COUNTS IN BUCKETS
     chart = visualizations.Charter(data_ds_filtered, variable=variable)
 
-    if variable == 'max_temperature':    
-      chart.stack(title=f'Tropic days (in Czechia) projection ({len(models)} CMIP6 models)', ylabel='Tropic days annualy', marker=forecast_from)
+    if variable == 'max_temperature':
+      model_count = set(data_ds_filtered.model.values.flat)
+      chart.stack(title=f'Tropic days (in Czechia) projection ({len(model_count)} CMIP6 models)', ylabel='Tropic days annualy', marker=forecast_from)
   
   else: 
     if variable == 'discovery':
