@@ -15,7 +15,7 @@
 # WHAT to plot
 variable = 'temperature'
 #variable = 'max_temperature'  
-#variable = 'discovery'
+variable = 'discovery'
 stacked = False # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
 
@@ -105,12 +105,14 @@ def geog_agg(fn, buckets=None, area=None):
     # Fixing inconsistent naming
     if 'lat' in ds.coords: lat, lon = 'lat', 'lon' 
     else: lat, lon = 'latitude', 'longitude'
+    
     # Narrow to selected variable
     
     da = ds[var] 
     if 'height' in da.coords:
       da = da.drop_vars('height')
 
+    # filter within area
     if area: 
       if len(area)>3:
         da.sel({lat: slice(area[0], area[2]), lon: slice(area[1], area[3])})# N-S # W-E
@@ -121,15 +123,15 @@ def geog_agg(fn, buckets=None, area=None):
     
     # Maximums
     if var == 'tasmax':
-      da_agg = da.max(['lat', 'lon'])
+      da_agg = da.max([lat, lon])
     
     # Averages
     else:
       # Weight as longitude gird shrinks with latitude
-      weights = np.cos(np.deg2rad(da.lat))
+      weights = np.cos(np.deg2rad(da[lat]))
       weights.name = "weights"
       da_weighted = da.weighted(weights)
-      da_agg = da_weighted.mean(['lat', 'lon'])
+      da_agg = da_weighted.mean([lat, lon])
 
     # Aggregate time
     if var == 'tasmax':
