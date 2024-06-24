@@ -14,7 +14,8 @@
 
 # WHAT to plot
 variable = 'temperature'
-variable = 'max_temperature'  
+variable = 'max_temperature'  # count from daily max
+#variable = 'max_temperature_monthly'  
 #variable = 'discovery'
 stacked = True # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
@@ -66,24 +67,30 @@ forecast_from = 2015 # hidcast data not available beyond 2014 anyway for most mo
 
 experiments = scenarios['to-visualize'].keys()
 variables = {
+  'historical': {'request': '2m_temperature', 'dataset': 'tas'},
   'temperature': {'request': 'near_surface_air_temperature', 'dataset': 'tas'},
   'discovery': {'request': 'near_surface_air_temperature', 'dataset': 'tas'},
-  'max_temperature': {'request': 'daily_maximum_near_surface_air_temperature', 'dataset': 'tasmax', 
-  'historical': {'request': '2m_temperature', 'dataset': 'tas'}}
-}
+  # TBD: max is currently being red only for Jun-Aug in downloader, OK?
+  'max_temperature': {'request': 'daily_maximum_near_surface_air_temperature', 'dataset': 'tasmax', 'frequency': 'daily'},
+  'max_temperature_monthly': {'request': 'monthly_maximum_near_surface_air_temperature', 'dataset': 'tasmax', 'frequency': 'monthly'}
+  }
 
 md = util.loadMD('model_md')
+
 
 # DOWNLOADING 
 
 # models to be downloaded – when empty, only already downloaded files will be visualized
 models = md[variable] 
 
-if variable in ('temperature', 'discovery'):
+if variable in ('temperature'):
   unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
-elif variable == 'max_temperature':
+if variable == 'discovery':
+  experiments = ['ssp245']
+  unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+elif variable.startswith('max_temperature'):
   experiments = ['historical', 'ssp245']
-  frequency='daily'
+  frequency=variables[variable]['frequency']
   downloader.download(models, experiments, DATADIR, variable=variables[variable]['request'], area=md['area']['cz'], frequency=frequency, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
 elif variable == 'history':
   downloader.reanalysis()
@@ -207,7 +214,7 @@ try:
     # COUNTS IN BUCKETS
     chart = visualizations.Charter(data_ds_filtered, variable=variable)
 
-    if variable == 'max_temperature':
+    if variable.startswith('max_temperature'):
       model_count = set(data_ds_filtered.model.values.flat)
       chart.stack(title=f'Tropic days (in Czechia) projection ({len(model_count)} CMIP6 models)', ylabel='Tropic days annualy', marker=forecast_from)
   
@@ -220,15 +227,17 @@ try:
       # TEMPERATURES
       data = data_ds_filtered[variables[variable]['dataset']]
 
-      def models_with_all_experiments():
+      def filter_to_models_with_all_experiments():
         unavailable_models = [list(unavailable_experiments.values())]
         unavailable_models = [val for models in unavailable_experiments.values() for val in models]
         data = data.sel(model=~data.model.isin(unavailable_models))
         # TODO must be done from the dataset, not to risk data inconsistencies
 
-      def models_with_all_experiments():
-        data = data.sel(experiment=~data.experiment.isin(['ssp119']))
+      def filter_to_models_with_most_experiments():
+        data = unavailable_models.sel(experiment=~data.experiment.isin(['ssp119']))
         data = data.sel(model=~data.model.isin(unavailable_experiments['ssp245']))
+
+      #filter_to_models_with_most_experiments()
 
       data_90 = data.quantile(0.9, dim='model')
       data_10 = data.quantile(0.1, dim='model')
