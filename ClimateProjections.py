@@ -15,7 +15,7 @@
 # WHAT to plot
 variable = 'temperature'
 #variable = 'max_temperature'  
-variable = 'discovery'
+#variable = 'discovery'
 stacked = False # aggregate into buckets
 reaggregate = False # compute aggregations regardles if they already exist
 
@@ -74,9 +74,10 @@ variables = {
 
 md = util.loadMD('model_md')
 
-models = md[variable] # models to be downloaded – when empty, only already downloaded files will be visualized
-
 # DOWNLOADING 
+
+# models to be downloaded – when empty, only already downloaded files will be visualized
+models = md[variable] 
 
 if variable in ('temperature', 'discovery'):
   unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
@@ -169,12 +170,11 @@ def geog_agg(fn, buckets=None, area=None):
 print('Opening aggregations')
 
 for filename in cmip6_nc:
-  model, experiment = filename.split('_')[2:4]
-  
+  model, experiment, whatever, gn, time = filename.split('_')[2:7]
   try:
-    candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}')] # TODO: multiple files for multiple years can exist
-    if not len(candidate_files) or reaggregate:
-      print(f'aggregating {model} {experiment}')
+    candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}_{gn}_{time}')] 
+    # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
+    if reaggregate or not len(candidate_files):
       geog_agg(filename, buckets=stacked)
 
   except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
@@ -187,15 +187,18 @@ try:
   if not_read: print("\nNOT read: '" + ' '.join(map(str, not_read)) +"'")
   
   # removing historical data before 2014, because some models can include them despite request
-  def filter_years(ds):
-    if 'historical' in ds['experiment']:
-      ds = ds.sel(year=ds['year'] < forecast_from)
-    return ds
-  data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
-
+  if variable != 'discovery':
+    def filter_years(ds):
+      if 'historical' in ds['experiment']:
+        ds = ds.sel(year=ds['year'] < forecast_from)
+      return ds
+    data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
+  else:
+    data_ds_filtered = data_ds
+  
   # merging data series of different periods for the same model
-  data_ds_filtered = data_ds.groupby('model').mean('model')
-  print (data_ds_filtered)
+  data_ds_filtered = data_ds_filtered.groupby('model').mean('model')
+  
 
 # VISUALIZE
 
@@ -210,21 +213,21 @@ try:
   else: 
     if variable == 'discovery':
       chart = visualizations.Charter(data_ds, variable=variable)
-      chart.plot(what={'experiment': "ssp126"})
+      chart.plot(what={'experiment': "historical"})
     else:
 
       # TEMPERATURES
       data = data_ds_filtered[variables[variable]['dataset']]
 
-      # drop models with some unavailable experiments
-      #unavailable_models = [list(unavailable_experiments.values())]
-      #unavailable_models = [val for models in unavailable_experiments.values() for val in models]
-      #data = data.sel(model=~data.model.isin(unavailable_models))
-      # OR
-      # keep the most of the data 
-      #data = data.sel(experiment=~data.experiment.isin(['ssp119']))
-      #data = data.sel(model=~data.model.isin(unavailable_experiments['ssp245']))
-      # TODO must be done from the dataset, not to risk data inconsistencies
+      def models_with_all_experiments():
+        unavailable_models = [list(unavailable_experiments.values())]
+        unavailable_models = [val for models in unavailable_experiments.values() for val in models]
+        data = data.sel(model=~data.model.isin(unavailable_models))
+        # TODO must be done from the dataset, not to risk data inconsistencies
+
+      def models_with_all_experiments():
+        data = data.sel(experiment=~data.experiment.isin(['ssp119']))
+        data = data.sel(model=~data.model.isin(unavailable_experiments['ssp245']))
 
       data_90 = data.quantile(0.9, dim='model')
       data_10 = data.quantile(0.1, dim='model')

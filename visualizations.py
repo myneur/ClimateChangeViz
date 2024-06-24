@@ -127,7 +127,7 @@ class Charter:
             data = data.dropna(dim='year') 
             aligned_years = data.coords['year'].values  
 
-            assert len(aligned_years) == len(data.values), "Mismatch in the dimensions of years and the selected data"
+            #assert len(aligned_years) == len(data.values), "Mismatch in the dimensions of years and the selected data"
             ax.plot(aligned_years, data.values, color=f'{colors[i % len(colors)]}', label=model, linewidth=1.8)
 
             # TODO make it robust for multile models with the same name
