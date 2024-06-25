@@ -21,12 +21,12 @@ class Charter:
     self.format = format
     self.size = size
 
-  def stack(self, title=None, ylabel=None, marker=None):
+  def stack(self, title=None, subtitle=None, ylabel=None, marker=None):
     try:
       fig, ax = plt.subplots(1, 1)
       if self.size: fig.set_size_inches(self.size[0], self.size[1])
       if title: ax.set(title=title)  
-      ax.text(0.5, .98, "Goal of keeping rise below 3° (ssp245)", ha='center', va='center', transform=ax.transAxes, fontsize=12, color='lightgray')
+      if subtitle: ax.text(0.5, .98, subtitle, ha='center', va='center', transform=ax.transAxes, fontsize=12, color='lightgray')
       if ylabel: ax.set(ylabel=ylabel)  
 
       models = set(self.data.model.values.flat)

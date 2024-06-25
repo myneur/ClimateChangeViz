@@ -212,16 +212,21 @@ try:
   if stacked:
 
     # COUNTS IN BUCKETS
-    chart = visualizations.Charter(data_ds_filtered, variable=variable)
-
     if variable.startswith('max_temperature'):
       model_count = set(data_ds_filtered.model.values.flat)
-      chart.stack(title=f'Tropic days (in Czechia) projection ({len(model_count)} CMIP6 models)', ylabel='Tropic days annualy', marker=forecast_from)
+
+      chart = visualizations.Charter(data_ds_filtered, variable=variable)
+      chart.stack(
+        title=f'Tropic days (in Czechia) projection ({len(model_count)} CMIP6 models)', 
+        subtitle="When no decline of emissions till 2050 (ssp245 scenario)",
+        ylabel='Tropic days annualy', marker=forecast_from)
   
   else: 
     if variable == 'discovery':
+      
       chart = visualizations.Charter(data_ds, variable=variable)
-      chart.plot(what={'experiment': "historical"})
+      chart.plot(
+        what={'experiment': "historical"})
     else:
 
       # TEMPERATURES
@@ -249,11 +254,19 @@ try:
 
       if variable == 'temperature':
         model_count = set(data.model.values.flat)
-        chart.plot(title=f'Global temperature projections ({len(model_count)} CMIP6 models)', zero=preindustrial_temp, reference_lines=[0, 2], labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
+        
+        chart.plot(
+          title=f'Global temperature projections ({len(model_count)} CMIP6 models)', 
+          zero=preindustrial_temp, 
+          reference_lines=[0, 2], labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
         #chart.plot(what={'experiment': "ssp126"})
       else:
         maxes = {'Madrid': 35}
         model_count = set(data_ds_filtered.model.values.flat)
-        chart.plot(title=f'Maximal temperature (in Czechia) projections ({len(model_count)} CMIP6 models)', ylabel='Max Temperature (°C)', reference_lines=[preindustrial_temp], labels=scenarios['to-visualize'])
+        
+        chart.plot(
+          title=f'Maximal temperature (in Czechia) projections ({len(model_count)} CMIP6 models)', 
+          ylabel='Max Temperature (°C)', 
+          reference_lines=[preindustrial_temp], labels=scenarios['to-visualize'])
 
 except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
