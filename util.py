@@ -1,7 +1,8 @@
 import json
 import zipfile
+import traceback
 
-def debug():
+def snippet():
   with open('debug-exec-chunks.py', 'r') as f: exec(f.read())
 
 def loadMD(where):
@@ -23,3 +24,6 @@ def unzip(filename, DATADIR):
   print(f"UNZIPPPING {filename} {DATADIR}")
   with zipfile.ZipFile(filename, 'r') as zip_ref:
     zip_ref.extractall(DATADIR)
+
+def debug(msg, e, limit=1):
+  print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=limit)

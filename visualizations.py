@@ -11,40 +11,56 @@ import bisect
 
 import traceback
 
-colors = ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']
-
 class Charter:        
-  def __init__(self, data, variable=None, range=None, format='png', size=None):
-    self.data = data
+  def __init__(self, variable=None, title=None, subtitle=None, ylabel=None, format='png', size=None):
     self.variable = variable
-    self.range = range
     self.format = format
     self.size = size
 
-  def stack(self, title=None, ylabel=None, marker=None):
-    try:
-      fig, ax = plt.subplots(1, 1)
-      if self.size: fig.set_size_inches(self.size[0], self.size[1])
-      if title: ax.set(title=title)  
-      ax.text(0.5, .98, "Goal of keeping rise below 3° (ssp245)", ha='center', va='center', transform=ax.transAxes, fontsize=12, color='lightgray')
-      if ylabel: ax.set(ylabel=ylabel)  
+    fig, ax = plt.subplots(1, 1)
+    if self.size: fig.set_size_inches(self.size[0], self.size[1])
+    if title: ax.set(title=title)  
+    if subtitle: ax.text(0.5, .98, subtitle, ha='center', va='center', transform=ax.transAxes, fontsize=12, color='lightgray')
+    if ylabel: ax.set(ylabel=ylabel)  
+    self.fig = fig
+    self.ax = ax
 
-      models = set(self.data.model.values.flat)
+    self.palette = {
+      'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
+      'series': ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']}
+
+  def save(self):
+    # CONTEXT
+    context = "models: " + ' '.join(map(str, self.models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
+    plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
+    print(context)
+
+    self.fig.savefig(f'charts/chart_{self.variable}_{len(self.models)}m.'+self.format)
+    plt.show()
+
+
+  def stack(self, data, marker=None):
+    ax = self.ax
+    try:
+
+      self.models = set(data.model.values.flat)
 
       self._xaxis_climatic(ax, marker=marker)        
 
-      years = self.data.year.values #years = self.data.coords['year'].values
+      years = data.year.values #years = data.coords['year'].values
 
       # one value, no buckets
-      #tasmax_max = self.data.tasmax.max(dim='experiment').mean(dim='model')
+      #tasmax_max = data.tasmax.max(dim='experiment').mean(dim='model')
       #plt.bar(years, tasmax_max.squeeze().values)
 
-      bucket_values = self.data.bucket.squeeze()  
-      bins = self.data.bins.values
+      bucket_values = data.bucket.squeeze()  
+      bins = data.bins.values
       #bins = sorted(bins, reverse=True)
       bottom = np.zeros(len(years)) 
+      
       bucket_sums = bucket_values.mean(dim='model').max(dim='experiment')      
-      palette = ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"] #palette = ["#FCED8D", "#FF9F47", "#E04B25", "#7A0B0A", "#330024"][2:] #palette = ["#D9BC2B", "#D99518", "#D98218", "#D9601A", "#BF3111"][3:] # palette = ["#F0E500", "#F5BC00", "#DB8000", "#F54E00", "#EB0C00"][3:]
+      
+      palette = self.palette['heat'] 
       palette = [palette[5], palette[8]]
 
       colors = plt.cm.hot(range(len(bins)))
@@ -56,30 +72,20 @@ class Charter:
       handles, labels = ax.get_legend_handles_labels()
       ax.legend(handles, labels, loc='upper left', frameon=False)
 
-      # CONTEXT
-      context = "models: " + ' '.join(map(str, models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
-      plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
-      print(context)
-
-      # OUTPUT
-      fig.savefig(f'charts/chart_{self.variable}_{len(models)}m.'+self.format)
-      plt.show()
+      self.save()
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-  def plot(self, what='mean', title=None, ylabel=None, zero=None, reference_lines=None, labels=None, marker=None):
+  def plot(self, data, limits=None, what='mean', zero=None, reference_lines=None, labels=None, marker=None):
+    ax = self.ax
+    colors = self.palette['series']
     try:
-      fig, ax = plt.subplots(1, 1)
-      if self.size: fig.set_size_inches(self.size[0], self.size[1])
-      if title: ax.set(title=title)  
-      if ylabel: ax.set(ylabel=ylabel)   
-
-      models = set(self.data.model.values.flat)
+      self.models = set(data.model.values.flat)
       
       # SCALE
       if zero and not (np.isnan(zero) and not np.isinf(zero)):
         if zero:
-          yticks = [0, 1.5, 2, 3, 4]
+          yticks = [0, 1.5, 2, 3]
           plt.gca().set_yticks([val + zero for val in yticks])
           ax.set_ylim([-1 +zero, 4 + zero])
           plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
@@ -101,29 +107,32 @@ class Charter:
       
       # DATA
       if what == 'mean':
-        series = self.data.experiment.values
+        series = data.experiment.values
         legend = [labels[s] for s in series]
         for i in np.arange(len(series)):
           try:
-            ax.plot(self.data.year, self.range['mean'][i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
+            
+            ax.plot(data.year, limits['mean'][i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
             
             alpha=0.03 if legend[i] == 'hindcast' else 0.07
-            ax.fill_between(self.data.year, self.range['top'][i,:], self.range['bottom'][i,:], alpha=alpha, color=f'{colors[i]}')
+            ax.fill_between(data.year, limits['top'][i,:], limits['bottom'][i,:], alpha=alpha, color=f'{colors[i]}')
           except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
       else:
-        years = self.data.coords['year'].values
-        legend = self.data.model.values
+        years = data.coords['year'].values
+        legend = data.model.values
+        
+        if len(self.models)<len(data.model.values):
+          data = data.groupby('model').mean()
 
-        data_squeezed = self.data.groupby('model').mean()
         dimension = list(what.keys())[0]
-        data_squeezed = data_squeezed.where(data_squeezed[dimension] == what[dimension], drop=True)
+        data = data.where(data[dimension] == what[dimension], drop=True)
 
-        for i, model in enumerate(data_squeezed.coords['model'].values):
+        for i, model in enumerate(data.coords['model'].values):
           try:
-            model_data = data_squeezed.sel(model=model, drop=True)
+            model_data = data.sel(model=model, drop=True)
             
             # making it robust to inconsistencies in the data
-            data = model_data[list(data_squeezed.data_vars)[0] ].squeeze()
+            data = model_data[list(data.data_vars)[0] ].squeeze()
             data = data.dropna(dim='year') 
             aligned_years = data.coords['year'].values  
 
@@ -133,22 +142,16 @@ class Charter:
             # TODO make it robust for multile models with the same name
 
           except Exception as e: 
-            print(f"Error in {model}: {type(e).__name__}: {e}"); 
-            #traceback.print_exc(limit=1)
-            #print(data)
+            if len(data.values)==0:
+              print(f'No data for {what[dimension]} in {model}')
+            else:
+              print(f"Error in {model}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+              print(data)
 
       handles, labels = ax.get_legend_handles_labels()
       ax.legend(handles, labels, loc='upper left', frameon=False)
 
-
-      # CONTEXT
-      context = "models: " + ' '.join(map(str, models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
-      plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
-      print(context)
-
-      # OUTPUT
-      fig.savefig(f'charts/chart_{self.variable}_{len(models)}m.'+ self.format)
-      plt.show()
+      self.save()
     
     except Exception as e: print(f"Visualization\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 

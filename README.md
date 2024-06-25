@@ -21,7 +21,7 @@ Averages by 50th quantile. Ranges by 10-90th quantile.
 ![Local tropic days in summer months with the max temperature over 30 °C projections (CMIP6 models)](charts/latest_tropic.png)
 
 ### Context (Work in progress, exploration)
-This is an early exploration of what data is available so far. The max temperature projections seems to be varying more and daily predictions are available in less number of models. 
+This is an early exploration of what data is available so far. The max temperature projections seem to be varying more and daily predictions are available in less number of models. 
 
 # How to run it
 1. install python libraries in `requirements.txt`

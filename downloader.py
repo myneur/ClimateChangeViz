@@ -29,6 +29,7 @@ def download(models, experiments, DATADIR, variable='near_surface_air_temperatur
   print(f'\n\nRequesting {variable} {frequency} {experiments} for {models}\n{separator}\n')
   for experiment in experiments:
     if experiment == 'historical':
+      variable = '2m_temperature'
       start = 1850
       till = forecast_from-1      
     else:
