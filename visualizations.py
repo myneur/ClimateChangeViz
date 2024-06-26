@@ -58,7 +58,7 @@ class Charter:
       #bins = sorted(bins, reverse=True)
       bottom = np.zeros(len(years)) 
       
-      bucket_sums = bucket_values.mean(dim='model').max(dim='experiment')      
+      bucket_sums = bucket_values.median(dim='model').max(dim='experiment')      
       
       palette = self.palette['heat'] 
       palette = [palette[5], palette[8]]
@@ -108,10 +108,9 @@ class Charter:
       # DATA
       if what == 'mean':
         series = data.experiment.values
-        legend = [labels[s] for s in series]
+        legend = [labels[s] for s in series] if labels else series
         for i in np.arange(len(series)):
           try:
-            
             ax.plot(data.year, limits['mean'][i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
             
             alpha=0.03 if legend[i] == 'hindcast' else 0.07
@@ -132,17 +131,17 @@ class Charter:
             model_data = data.sel(model=model, drop=True)
             
             # making it robust to inconsistencies in the data
-            data = model_data[list(data.data_vars)[0] ].squeeze()
-            data = data.dropna(dim='year') 
-            aligned_years = data.coords['year'].values  
+            model_data = model_data[list(data.data_vars)[0] ].squeeze()
+            model_data = model_data.dropna(dim='year') 
+            aligned_years = model_data.coords['year'].values  
 
             #assert len(aligned_years) == len(data.values), "Mismatch in the dimensions of years and the selected data"
-            ax.plot(aligned_years, data.values, color=f'{colors[i % len(colors)]}', label=model, linewidth=1.8)
+            ax.plot(aligned_years, model_data.values, color=f'{colors[i % len(colors)]}', label=model, linewidth=1.8)
 
             # TODO make it robust for multile models with the same name
 
           except Exception as e: 
-            if len(data.values)==0:
+            if len(model_data.values)==0:
               print(f'No data for {what[dimension]} in {model}')
             else:
               print(f"Error in {model}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)

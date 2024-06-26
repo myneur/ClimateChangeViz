@@ -25,6 +25,7 @@ def metadata(models, experiments, date=2014):
 
 def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, forecast_from=2015): # WIP
   unavailable_experiments = status['unavailable_experiments'][variable]  
+
   separator = '='*60
   print(f'\n\nRequesting {variable} {frequency} {experiments} for {models}\n{separator}\n')
   for experiment in experiments:

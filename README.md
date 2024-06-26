@@ -2,6 +2,13 @@
 Projections of global temperature or local max temperature according to CMIP IPCC models.
 
 ## Global temperature projections (CMIP6 models)
+Coupled Model Intercompari-son Project, phase 6 (CMIP6), run by the World Climate Research Programme
+
+Thare are currently 46 models available (mid 2024). 
+- 31 models have both ssp126 and ssp245 
+- 8 models have ssp119, ssp126 and ssp245 
+
+
 
 ### Most complete set of models covering most scenarios (so far)
 ![Global temperature projections (CMIP6 models)](charts/latest_most_complete.png)
@@ -11,6 +18,7 @@ Projections of global temperature or local max temperature according to CMIP IPC
 
 ### Context (Work in progress)
 This is an exploration so far. There are models considered hot and outliers and couple of more models. These are not distinguished here yet. 
+Models with TCR (Transient Climate Response) 1.4-2.2 are deemed more likely in AR6. 
 Averages by 50th quantile. Ranges by 10-90th quantile.
 
 ## Maximal temperature (in Czechia) projections (CMIP6 models)
