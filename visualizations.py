@@ -12,8 +12,9 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable=None, title=None, subtitle=None, ylabel=None, format='png', size=None):
+  def __init__(self, variable=None, models=None, title=None, subtitle=None, ylabel=None, format='png', size=None):
     self.variable = variable
+    self.models = models
     self.format = format
     self.size = size
 
@@ -42,9 +43,6 @@ class Charter:
   def stack(self, data, marker=None):
     ax = self.ax
     try:
-
-      self.models = set(data.model.values.flat)
-
       self._xaxis_climatic(ax, marker=marker)        
 
       years = data.year.values #years = data.coords['year'].values
@@ -53,19 +51,18 @@ class Charter:
       #tasmax_max = data.tasmax.max(dim='experiment').mean(dim='model')
       #plt.bar(years, tasmax_max.squeeze().values)
 
-      bucket_values = data.bucket.squeeze()  
+
+      data = data.bucket.squeeze()  
       bins = data.bins.values
       #bins = sorted(bins, reverse=True)
       bottom = np.zeros(len(years)) 
-      
-      bucket_sums = bucket_values.median(dim='model').max(dim='experiment')      
-      
+
       palette = self.palette['heat'] 
       palette = [palette[5], palette[8]]
 
       colors = plt.cm.hot(range(len(bins)))
       for i, bin_label in enumerate(bins):
-          bin_values = bucket_sums.sel(bins=bin_label).values
+          bin_values = data.sel(bins=bin_label).values
           ax.bar(years, bin_values, label=f'{bin_label} °C', bottom=bottom, color=palette[i], width=1)
           bottom += bin_values
 
@@ -76,7 +73,7 @@ class Charter:
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-  def plot(self, data, limits=None, what='mean', zero=None, reference_lines=None, labels=None, marker=None):
+  def plot(self, data, ranges=None, what='mean', zero=None, reference_lines=None, labels=None, marker=None):
     ax = self.ax
     colors = self.palette['series']
     try:
@@ -111,10 +108,10 @@ class Charter:
         legend = [labels[s] for s in series] if labels else series
         for i in np.arange(len(series)):
           try:
-            ax.plot(data.year, limits['mean'][i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
-            
             alpha=0.03 if legend[i] == 'hindcast' else 0.07
-            ax.fill_between(data.year, limits['top'][i,:], limits['bottom'][i,:], alpha=alpha, color=f'{colors[i]}')
+            for line in ranges[1:-1]:
+              ax.plot(data.year, line[i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
+            ax.fill_between(data.year, ranges[0][i,:], ranges[-1][i,:], alpha=alpha, color=f'{colors[i]}')
           except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
       else:
         years = data.coords['year'].values

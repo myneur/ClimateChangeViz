@@ -67,9 +67,10 @@ import traceback
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 def main():
+  GlobalTemperature()
   #maxTemperature()
-  tropicDaysBuckets()
-  #GlobalTemperature()
+  #tropicDaysBuckets()
+  
   #discovery()
 
 
@@ -80,27 +81,27 @@ experiments = scenarios['to-visualize'].keys()
 def GlobalTemperature():
   variable = 'temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  models = md[variable]
+  #models = md[variable]
   models = md["model_resolutions"].keys()
   unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
   
   aggregate()
+  data = loadAggregated(models=models, experiments=experiments, unavailable_experiments=unavailable_experiments)
+  data = cleanUpData(data)
   
-  data_ds_filtered = cleanUpData(loadAggregated(models))
-  
-  data_ds_filtered = filter_to_models_with_most_experiments(data_ds_filtered, unavailable_experiments)
-  #data_ds_filtered = filter_to_models_with_all_experiments(data_ds_filtered, unavailable_experiments)
-  
-  data_50, data_90, data_10 = averageModels('tas', data_ds_filtered, unavailable_experiments)
+  data = models_with_all_experiments(data, drop_experiments=['ssp119'])
+  #data = models_with_all_experiments(data)
+  data = data['tas']
+  quantile_ranges = quantiles(data, (.1, .5, .9))
 
   chart = visualizations.Charter(variable=variable, 
-    title=f'Global temperature projections ({len(set(data_ds_filtered.model.values.flat))} CMIP6 models)', )
+    title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', )
   chart.plot(
-    data_ds_filtered, limits={'top': data_90, 'mean': data_50, 'bottom': data_10}, 
-    zero=preindustrial_temp(data_50), 
+    data, ranges=quantile_ranges, 
+    zero=preindustrial_temp(quantile_ranges[1]), 
     reference_lines=[0, 2], labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
   #chart.plot(what={'experiment': "ssp126"})
-  return data_ds_filtered
+  return data
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
 def maxTemperature():
@@ -117,17 +118,18 @@ def maxTemperature():
   
   aggregate()
   
-  data_ds_filtered = cleanUpData(loadAggregated(models))
-  data_50, data_90, data_10 = averageModels('tasmax', data_ds_filtered, unavailable_experiments)
+  data = cleanUpData(loadAggregated(models))
+  data = data['tasmax']
+  quantile_ranges = quantiles(data, (.1, .5, .9))
   maxes = {'Madrid': 35}
 
   chart = visualizations.Charter(variable=variable,
-    title=f'Maximal temperature (in Czechia) projections ({len(set(data_ds_filtered.model.values.flat))} CMIP6 models)', 
+    title=f'Maximal temperature (in Czechia) projections ({len(set(data.model.values.flat))} CMIP6 models)', 
     ylabel='Max Temperature (°C)')
   
   chart.plot(
-    data_ds_filtered, limits={'top': data_90, 'mean': data_50, 'bottom': data_10}, 
-    reference_lines=[preindustrial_temp(data_50)], labels=scenarios['to-visualize'])
+    data, ranges=quantile_ranges, 
+    reference_lines=[preindustrial_temp(quantile_ranges[1])], labels=scenarios['to-visualize'])
 
 def tropicDaysBuckets():
   variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
@@ -145,9 +147,10 @@ def tropicDaysBuckets():
   
   data = cleanUpData(loadAggregated(models))
   model_count = len(set(data.model.values.flat))
-  #data = data.median(dim='model')
+  models = data.model.values.flat
+  data = data.median(dim='model').max(dim='experiment')      
 
-  chart = visualizations.Charter(variable=variable, 
+  chart = visualizations.Charter(variable=variable, models=models,
     title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
     subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
     ylabel='Tropic days annualy')
@@ -158,7 +161,9 @@ def tropicDaysBuckets():
 def discovery():
   variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  models = md["model_resolutions"].keys(); #["GISS-E2-1-G", "CESM2-FV2", "E3SM-1-1", "E3SM-1-1-ECA", "AWI-ESM-1-1-LR", "MIROC-ES2H", "CMCC-ESM2", "KIOST-ESM", "CMCC-CM2-HR4", "IPSL-CM5A2-INCA", "EC-Earth3-CC", "EC-Earth3-Veg-LR", "EC-Earth3-AerChem"]
+  #models = md["model_resolutions"].keys()
+  #models = ["GISS-E2-1-G", "CESM2-FV2", "E3SM-1-1", "E3SM-1-1-ECA", "AWI-ESM-1-1-LR", "MIROC-ES2H", "CMCC-ESM2", "KIOST-ESM", "CMCC-CM2-HR4", "IPSL-CM5A2-INCA", "EC-Earth3-CC", "EC-Earth3-Veg-LR", "EC-Earth3-AerChem"]
+  models = []
   scenarios = ['ssp126']
   downloader.download(models, scenarios, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
   aggregate()
@@ -175,14 +180,12 @@ def history():
 
 # COMPUTATION
 
-def averageModels(var, data_ds_filtered, unavailable_experiments):
-  # TEMPERATURES
-  data = data_ds_filtered[var]
-
-  data_90 = data.quantile(0.9, dim='model')
-  data_10 = data.quantile(0.1, dim='model')
-  data_50 = data.quantile(0.5, dim='model')
-  return data_50, data_90, data_10
+def quantiles(data, quantiles):
+  quantilized = []
+  for q in quantiles:
+    quantilized.append(data.quantile(q, dim='model'))
+  
+  return quantilized
 
 def create_buckets(da_agg):
   t30 = ((da_agg >= (30+K)) & (da_agg < (35+K))).resample(time='YE').sum(dim='time')
@@ -280,75 +283,87 @@ def aggregate(stacked=None):
 
     except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-def loadAggregated(models):
+def loadAggregated(models=None, experiments=None, unavailable_experiments=None):
   print('Opening aggregations')
-  data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model')
-  #data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
+
+  
+  data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
   data_ds.load()
-  # combined_ds = xr.combine_by_coords([data_ds1, data_ds2])
-  #combined_ds.load()
+  return data_ds
+
+  files_to_load = f'{DATADIR}cmip6_agg_*.nc'
+
+  data_ds = None
+  try:
+    for i in glob(files_to_load):
+        filename = os.path.abspath(i) # os.path.basename(i)
+        print(filename)
+        new_ds = xr.open_dataset(filename)
+        if data_ds is None:
+            data_ds = new_ds
+        else:
+            #data_ds = xr.combine_by_coords([data_ds, new_ds])
+            #data_ds = xr.combine_nested([data_ds, new_ds], concat_dim=['experiment', 'model', 'bins', 'year'], combine_attrs='override')
+            data_ds = xr.combine_nested([data_ds, new_ds], concat_dim=['model'])
+
+  except Exception as e: 
+    print(f"Error in {filename}: {type(e).__name__}: {e}"); 
+    traceback.print_exc()
+    print(data_ds)
+    print(new_ds)
 
   not_read = set(models)-set(data_ds.model.values.flat)
   if not_read: print("\nNOT read: '" + ' '.join(map(str, not_read)) +"'")
 
+  #print(len(set(data_ds.sel(experiment='ssp126').model.values.flat)))
+  #print(sorted(set(data_ds.sel(experiment='ssp126').model.values.flat)))
+
   return data_ds
 
-def cleanUpData(data_ds):
+def cleanUpData(data):
   # removing historical data before 2014, because some models can include them despite request
   try:
     def filter_years(ds):
       if 'historical' in ds['experiment']:
         ds = ds.sel(year=ds['year'] < forecast_from)
       return ds
-    data_ds_filtered = data_ds.groupby('experiment').map(filter_years) #, squeeze=True
+    data = data.groupby('experiment').map(filter_years) #, squeeze=True
   
     # merging data series of different periods for the same model
-    # TODO if len(models) > len(unique_models)
-    data_ds_filtered = data_ds_filtered.groupby('model').mean('model')
-    return data_ds_filtered
+    #models = data.model.values
+    #if len(models) > len(set(models)):
+    data = data.groupby('model').mean('model')
+    return data
 
-  except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+  except Exception as e: print(f"Error: {type(e).__name__}: {e}"); traceback.print_exc()  
 
-def filter_to_models_with_all_experiments(data, missing_models):
-  # TODO must be done from the dataset, not to risk data inconsistencies potentially introduced by unavailable_experiments
+def models_with_all_experiments(data, drop_experiments=None):
 
-  miss = set(missing_models['ssp119']) | se(missing_models['ssp126']) | set(missing_models['ssp245'])
+  if drop_experiments:
+    data = data.sel(experiment =~ data.experiment.isin(drop_experiments))
+
+  availability = []
+  for experiment in set(data.experiment.values.flat):
+    available = set(data.sel(experiment=experiment).dropna(dim='model', how='all').model.values)
+    availability.append(available)
+    #print(experiment)
+    #print(len(available), ' '.join(available))
+    print(f'\n{experiment}: {len(available)} models')
+    print(available)
+
+  keep = availability[0]
+  for a in availability[1:]:
+    keep &= a
+
+  keep = list(keep)
+  data = data.sel(model = data.model.isin(keep))
+  data = data.dropna(dim='model', how='all')
   
-  unavailable_models = [val for models in unavailable_experiments.values() for val in models]
-  return data.sel(model =~ data.model.isin(unavailable_models))
-  
+  remained = set(data.model.values.flat)
+  print(f"remained: {len(remained)} models")
+  print(remained)
 
-def filter_to_models_with_most_experiments(data, missing_models):
-  # TODO must be done from the dataset, not to risk data inconsistencies potentially introduced by unavailable_experiments
-  
-  # drop experiment that we know have the least of models
-  data_ds_filtered = data.sel(experiment =~ data.experiment.isin(['ssp119']))
-
-
-  avail1 = set(data_ds_filtered.sel(experiment='ssp126').dropna(dim='model', how='all').model.values)
-  print("126", len(avail1), avail1)
-  avail2 = set(data_ds_filtered.sel(experiment='ssp245').dropna(dim='model', how='all').model.values)
-  print("245", len(avail2), avail2)
-  keep = list(avail1 & avail2)
-  print("245", len(keep), keep)
-
-  intersection = data_ds_filtered.sel(model = data_ds_filtered.model.isin(keep))
-  intersection = intersection.dropna(dim='model', how='all')
-  remained = intersection.model.values
-  print("remained", len(remained), remained)
-  return intersection
-
-
-def WIP_filter_to_models_with_most_experiments(data):
-  # TODO must be done from the dataset, not to risk data inconsistencies potentially introduced by unavailable_experiments
-  
-  # drop experiment that we know have the least of models
-  data_ds_filtered = data.sel(experiment =~ data.experiment.isin(['ssp119']))
-  ssp126_models = data.sel(experiment =~ data.experiment.isin(['ssp126'])).model.values.flat
-  
-  # drop missing experiments in the other one
-  return data_ds_filtered.sel(model =~ data_ds_filtered.model.isin(ssp126_models))
-
+  return data
 
 
 def preindustrial_temp(data):

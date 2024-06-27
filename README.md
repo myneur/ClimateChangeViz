@@ -21,6 +21,8 @@ This is an exploration so far. There are models considered hot and outliers and 
 Models with TCR (Transient Climate Response) 1.4-2.2 are deemed more likely in AR6. 
 Averages by 50th quantile. Ranges by 10-90th quantile.
 
+[Hot models problem, Nature](https://www.nature.com/articles/d41586-022-01192-2.epdf)
+
 ## Maximal temperature (in Czechia) projections (CMIP6 models)
 ![Local temperature max projections (CMIP6 models)](charts/latest_max.png)
 Averages by 50th quantile. Ranges by 10-90th quantile.
