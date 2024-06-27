@@ -7,13 +7,10 @@
 # Data-sets: cds.climate.copernicus.eu/cdsapp#!/dataset/projections-cmip6 | Models list/search on: aims2.llnl.gov
 
 # TODO
-# unziping to different folders not to interfere
-# 1. Buckets median
-# 2. Include all from aims2.llnl.gov or just some variants from the family (e. g. High resolution and not Low): https://www.nature.com/articles/d41586-022-01192-2.epdf
-# 3. Dealing with hot models ECS>4.5: shade range in 2 transparencies? AFAIK there is no consensus on their probability: https://www.carbonbrief.org/cmip6-the-next-generation-of-climate-models-explained/
-# 4. aggregated models by state as series to show how big is the coverage of the models
+# 2. Include all models with either by best estimate of AR6 or TCR Screen (likely) 1.4-2.2º as guided on https://www.nature.com/articles/d41586-022-01192-2.epdf
+# 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
 # 5. historical data (measurements from the constant set of stations normalized to the lastest, most complete set, to be independent on addtions)
-# 6. plot range of forecast to the right edge of the chart
+
 
 # WHAT
 reaggregate = False # compute aggregations regardles if they already exist
@@ -67,11 +64,11 @@ import traceback
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 def main():
-  GlobalTemperature()
-  #maxTemperature()
-  #tropicDaysBuckets()
+  return GlobalTemperature()
+  #return maxTemperature()
+  #return tropicDaysBuckets()
   
-  #discovery()
+  #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 
 # VISUALIZATIONS
@@ -83,15 +80,18 @@ def GlobalTemperature():
   
   #models = md[variable]
   models = md["model_resolutions"].keys()
+
+  #models = set(); for s in md["by_states"].items(): models |= set(s[1])
+
   unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
-  
   aggregate()
-  data = loadAggregated(models=models, experiments=experiments, unavailable_experiments=unavailable_experiments)
+  data = loadAggregated()
+  data = data['tas']
   data = cleanUpData(data)
   
-  data = models_with_all_experiments(data, drop_experiments=['ssp119'])
-  #data = models_with_all_experiments(data)
-  data = data['tas']
+  #data = models_with_all_experiments(data, drop_experiments=['ssp119'])
+  data = models_with_all_experiments(data)
+  
   quantile_ranges = quantiles(data, (.1, .5, .9))
 
   chart = visualizations.Charter(variable=variable, 
@@ -118,7 +118,7 @@ def maxTemperature():
   
   aggregate()
   
-  data = cleanUpData(loadAggregated(models))
+  data = cleanUpData(loadAggregated())
   data = data['tasmax']
   quantile_ranges = quantiles(data, (.1, .5, .9))
   maxes = {'Madrid': 35}
@@ -145,7 +145,7 @@ def tropicDaysBuckets():
   
   aggregate(stacked=True)
   
-  data = cleanUpData(loadAggregated(models))
+  data = cleanUpData(loadAggregated())
   model_count = len(set(data.model.values.flat))
   models = data.model.values.flat
   data = data.median(dim='model').max(dim='experiment')      
@@ -161,15 +161,22 @@ def tropicDaysBuckets():
 def discovery():
   variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  #models = md["model_resolutions"].keys()
-  #models = ["GISS-E2-1-G", "CESM2-FV2", "E3SM-1-1", "E3SM-1-1-ECA", "AWI-ESM-1-1-LR", "MIROC-ES2H", "CMCC-ESM2", "KIOST-ESM", "CMCC-CM2-HR4", "IPSL-CM5A2-INCA", "EC-Earth3-CC", "EC-Earth3-Veg-LR", "EC-Earth3-AerChem"]
-  models = []
-  scenarios = ['ssp126']
-  downloader.download(models, scenarios, DATADIR, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+  scenarios = ['ssp245']
+  models = [
+  "E3SM-1-1"
+  ]
+  
+  downloader.download(models, scenarios, DATADIR, skip_failing_scenarios=False, mark_failing_scenarios=True, forecast_from=forecast_from)
   aggregate()
-  data = loadAggregated(models)
+  data = loadAggregated()
+  data = data['tas']
   chart = visualizations.Charter(variable=variable)
-  chart.plot(data, what={'experiment': scenarios})
+  #chart.plot(data, what={'experiment': None})
+  print(data)
+  quantile_ranges = quantiles(data, (.1, .5, .9))
+  print(quantile_ranges)
+  chart.plot(data, ranges=quantile_ranges, what='mean')
+  return data
 
 
 def history():
@@ -285,16 +292,16 @@ def aggregate(stacked=None):
 
 def loadAggregated(models=None, experiments=None, unavailable_experiments=None):
   print('Opening aggregations')
-
-  
-  data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
-  data_ds.load()
-  return data_ds
-
-  files_to_load = f'{DATADIR}cmip6_agg_*.nc'
-
-  data_ds = None
   try:
+    data_ds = None
+    data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
+    data_ds.load()
+    return data_ds
+
+    files_to_load = f'{DATADIR}cmip6_agg_*.nc'
+
+    
+  
     for i in glob(files_to_load):
         filename = os.path.abspath(i) # os.path.basename(i)
         print(filename)
@@ -307,12 +314,10 @@ def loadAggregated(models=None, experiments=None, unavailable_experiments=None):
             data_ds = xr.combine_nested([data_ds, new_ds], concat_dim=['model'])
 
   except Exception as e: 
-    print(f"Error in {filename}: {type(e).__name__}: {e}"); 
-    traceback.print_exc()
-    print(data_ds)
-    print(new_ds)
+    print(f"Error: {type(e).__name__}: {e}"); 
+    traceback.print_exc(limit=1)
 
-  not_read = set(models)-set(data_ds.model.values.flat)
+  not_read = set(models)-set(data_ds.model.values.flat) if data_ds else print("Nothing read at all")
   if not_read: print("\nNOT read: '" + ' '.join(map(str, not_read)) +"'")
 
   #print(len(set(data_ds.sel(experiment='ssp126').model.values.flat)))
@@ -342,8 +347,11 @@ def models_with_all_experiments(data, drop_experiments=None):
   if drop_experiments:
     data = data.sel(experiment =~ data.experiment.isin(drop_experiments))
 
+  experiments = set(data.experiment.values.flat)
+  experiments = experiments - {'historical'} 
   availability = []
-  for experiment in set(data.experiment.values.flat):
+  for experiment in experiments:
+
     available = set(data.sel(experiment=experiment).dropna(dim='model', how='all').model.values)
     availability.append(available)
     #print(experiment)
@@ -373,6 +381,6 @@ md = util.loadMD('model_md')
 
 # RUN the function defined in the 'run' at the top
 try:
-  main()
+  result = main()
   #result = globals()[run]()
-except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc()#limit=1)
+except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)

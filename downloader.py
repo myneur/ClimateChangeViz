@@ -23,7 +23,8 @@ def metadata(models, experiments, date=2014):
       print(data['experiments'])
       print(data['date_ranges'])
 
-def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, forecast_from=2015): # WIP
+
+def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, skip_failing_scenarios=True, forecast_from=2015): # WIP
   unavailable_experiments = status['unavailable_experiments'][variable]  
 
   separator = '='*60
@@ -39,7 +40,7 @@ def download(models, experiments, DATADIR, variable='near_surface_air_temperatur
 
     date = f'{start}-01-01/{till}-12-31'
     for model in models:
-      if experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment]):          
+      if not skip_failing_scenarios or (experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment])):
         try:
           filename = f'{DATADIR}cmip6_monthly_{start}-{till}_{experiment}_{model}.zip'
           if not os.path.isfile(filename):

@@ -110,25 +110,31 @@ class Charter:
           try:
             alpha=0.03 if legend[i] == 'hindcast' else 0.07
             for line in ranges[1:-1]:
-              ax.plot(data.year, line[i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
+              ax.plot(
+                data.year, 
+                line[i,:], 
+                color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
             ax.fill_between(data.year, ranges[0][i,:], ranges[-1][i,:], alpha=alpha, color=f'{colors[i]}')
           except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
       else:
         years = data.coords['year'].values
         legend = data.model.values
-        
+
         if len(self.models)<len(data.model.values):
           data = data.groupby('model').mean()
-
+        
         dimension = list(what.keys())[0]
-        data = data.where(data[dimension] == what[dimension], drop=True)
+        if dimension:
+          data = data.where(data[dimension] == what[dimension], drop=True)
 
         for i, model in enumerate(data.coords['model'].values):
           try:
             model_data = data.sel(model=model, drop=True)
-            
+
             # making it robust to inconsistencies in the data
-            model_data = model_data[list(data.data_vars)[0] ].squeeze()
+            try:
+              model_data = model_data[list(data.data_vars)[0] ].squeeze()
+            except: pass
             model_data = model_data.dropna(dim='year') 
             aligned_years = model_data.coords['year'].values  
 
@@ -139,7 +145,7 @@ class Charter:
 
           except Exception as e: 
             if len(model_data.values)==0:
-              print(f'No data for {what[dimension]} in {model}')
+              print(f'No data for {what[dimension]} in {model}'); traceback.print_exc(limit=1)
             else:
               print(f"Error in {model}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
               print(data)
@@ -150,6 +156,8 @@ class Charter:
       self.save()
     
     except Exception as e: print(f"Visualization\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+
+
 
   def _xaxis_climatic(self, ax, marker=None):
     current_year = datetime.datetime.now().year

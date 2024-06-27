@@ -5,7 +5,7 @@ Projections of global temperature or local max temperature according to CMIP IPC
 Coupled Model Intercompari-son Project, phase 6 (CMIP6), run by the World Climate Research Programme
 
 Thare are currently 46 models available (mid 2024). 
-- 31 models have both ssp126 and ssp245 
+- 28 models have both ssp126 and ssp245 
 - 8 models have ssp119, ssp126 and ssp245 
 
 
