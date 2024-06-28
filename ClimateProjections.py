@@ -64,11 +64,11 @@ import traceback
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 def main():
-  return GlobalTemperature()
+  #return GlobalTemperature()
   #return maxTemperature()
   #return tropicDaysBuckets()
   
-  #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
+  return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 
 # VISUALIZATIONS
@@ -79,7 +79,7 @@ def GlobalTemperature():
   variable = 'temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
   #models = md[variable]
-  models = md["model_resolutions"].keys()
+  models = md["all_models"].keys()
 
   #models = set(); for s in md["by_states"].items(): models |= set(s[1])
 
@@ -100,15 +100,16 @@ def GlobalTemperature():
     data, ranges=quantile_ranges, 
     zero=preindustrial_temp(quantile_ranges[1]), 
     reference_lines=[0, 2], labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
-  #chart.plot(what={'experiment': "ssp126"})
+  chart.show()
+  chart.save()
   return data
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
 def maxTemperature():
   variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  models = md[variable]
-  models = md["model_resolutions"].keys()
+  #models = md['daily_models']
+  models = md["all_models"].keys()
 
   unavailable_experiments = downloader.download(models, 
     ['historical', 'ssp245'], DATADIR, 
@@ -130,12 +131,13 @@ def maxTemperature():
   chart.plot(
     data, ranges=quantile_ranges, 
     reference_lines=[preindustrial_temp(quantile_ranges[1])], labels=scenarios['to-visualize'])
+  chart.show()
+  chart.save()
 
 def tropicDaysBuckets():
   variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  models = md[variable]
-  models = md["model_resolutions"].keys()
+  models = md["all_models"].keys()
 
   unavailable_experiments = downloader.download(models, 
     ['historical', 'ssp245'], DATADIR, 
@@ -157,25 +159,31 @@ def tropicDaysBuckets():
   chart.stack(
     data, 
     marker=forecast_from)
+  chart.show()
+  chart.save()
 
 def discovery():
   variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
-  
-  scenarios = ['ssp245']
-  models = [
-  "E3SM-1-1"
-  ]
-  
-  downloader.download(models, scenarios, DATADIR, skip_failing_scenarios=False, mark_failing_scenarios=True, forecast_from=forecast_from)
+  models = ["CIESM", "CMCC-CM2-SR5", "FGOALS-g3", "NorESM2-MM", "MPI-ESM-1-2-HAM", "INM-CM4-8", "TaiESM1", "HadGEM3-GC31-MM", "NorESM2-LM", "MIROC-ES2L", "CAS-ESM2-0", "BCC-CSM2-MR", "ACCESS-CM2", "NESM3", "E3SM-1-0", "INM-CM5-0", "KACE-1-0-G", "FGOALS-f3-L", "CNRM-ESM2-1", "MRI-ESM2-0", "CESM2-WACCM-FV2", "CanESM5", "MPI-ESM1-2-HR", "CNRM-CM6-1", "EC-Earth3", "IITM-ESM", "MIROC6", "GISS-E2-2-G", "EC-Earth3-Veg", "CESM2", "CNRM-CM6-1-HR", "SAM0-UNICON", "GISS-E2-1-H", "MPI-ESM1-2-L", "AWI-CM-1-1-MR", "MCM-UA-1-0", "GFDL-CM4", "ACCESS-ESM1-5", "HadGEM3-GC31-LL", "CAMS-CSM1-0", "UKESM1-0-LL", "MPI-ESM1-2-LR", "FIO-ESM-2-0", "NorCPM1", "CanESM5-CanOE", "GFDL-ESM4", "IPSL-CM6A-LR", "BCC-ESM1", "CESM2-WACCM"]
+    
+  downloader.download(
+    models[0:4], 
+    ['ssp245'], 
+    DATADIR, 
+    skip_failing_scenarios=False, mark_failing_scenarios=True, 
+    forecast_from=forecast_from)
   aggregate()
   data = loadAggregated()
-  data = data['tas']
+  #data = data['tas']
   chart = visualizations.Charter(variable=variable)
   #chart.plot(data, what={'experiment': None})
   print(data)
   quantile_ranges = quantiles(data, (.1, .5, .9))
   print(quantile_ranges)
-  chart.plot(data, ranges=quantile_ranges, what='mean')
+  #chart.plot(data, ranges=quantile_ranges, what='mean')
+  chart.plot(data, what={'experiment':'ssp245'})
+  #chart.plot(data, what={'experiment':'historical'})
+  chart.show()
   return data
 
 
@@ -209,9 +217,9 @@ def create_buckets(da_agg):
 
 
 K = 273.15 # Kelvins
-def geog_agg(fn, buckets=None, area=None):
+def geog_agg(filename, buckets=None, area=None):
   try:
-    ds = xr.open_dataset(f'{DATADIR}{fn}')
+    ds = xr.open_dataset(f'{DATADIR}{filename}')
 
     var = 'tasmax' if 'tasmax' in ds else 'tas'
     exp = ds.attrs['experiment_id']
@@ -271,7 +279,9 @@ def geog_agg(fn, buckets=None, area=None):
     #ds.attrs['height'] = ...
 
     # SAVE
-    da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
+    model, experiment, variant, grid, time = filename.split('_')[2:7]
+    da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{variant}_{grid}_{time}.nc')
+    #da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
 
   except Exception as e: print(f"\nError aggregating {fn}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
@@ -279,26 +289,28 @@ def aggregate(stacked=None):
   dataFiles = list()
   for i in glob(f'{DATADIR}tas*.nc'):
       dataFiles.append(os.path.basename(i))
-
   for filename in dataFiles:
     model, experiment, variant, grid, time = filename.split('_')[2:7]
     try:
-      candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}_{grid}_{time}')] 
+      candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}_{variant}_{grid}_{time}')] 
       # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
       if reaggregate or not len(candidate_files):
+        print('.', end='')
         geog_agg(filename, buckets=stacked)
+      print()
 
     except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-def loadAggregated(models=None, experiments=None, unavailable_experiments=None):
+def loadAggregated(models=None, experiments=None, unavailable_experiments=None, wildcard=''):
   print('Opening aggregations')
   try:
     data_ds = None
-    data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc', combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
+    data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*{wildcard}*.nc', combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
     data_ds.load()
+
     return data_ds
 
-    files_to_load = f'{DATADIR}cmip6_agg_*.nc'
+    files_to_load = f'{DATADIR}cmip6_agg_*{wildcard}*.nc'
 
     
   
@@ -383,4 +395,4 @@ md = util.loadMD('model_md')
 try:
   result = main()
   #result = globals()[run]()
-except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc()

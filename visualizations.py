@@ -30,16 +30,16 @@ class Charter:
       'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
       'series': ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']}
 
-  def save(self):
+  def show(self):
     # CONTEXT
     context = "models: " + ' '.join(map(str, self.models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
     plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
     print(context)
-
-    self.fig.savefig(f'charts/chart_{self.variable}_{len(self.models)}m.'+self.format)
     plt.show()
 
-
+  def save(self):
+    self.fig.savefig(f'charts/chart_{self.variable}_{len(self.models)}m.'+self.format)
+    
   def stack(self, data, marker=None):
     ax = self.ax
     try:
@@ -68,8 +68,6 @@ class Charter:
 
       handles, labels = ax.get_legend_handles_labels()
       ax.legend(handles, labels, loc='upper left', frameon=False)
-
-      self.save()
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
@@ -127,6 +125,7 @@ class Charter:
         if dimension:
           data = data.where(data[dimension] == what[dimension], drop=True)
 
+
         for i, model in enumerate(data.coords['model'].values):
           try:
             model_data = data.sel(model=model, drop=True)
@@ -148,12 +147,13 @@ class Charter:
               print(f'No data for {what[dimension]} in {model}'); traceback.print_exc(limit=1)
             else:
               print(f"Error in {model}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
-              print(data)
+              print(f"Shapes, x: {model_data.values.shape}, y: {aligned_years.shape}")
+              print("Do shapes match? If not, select the variable to show.")
+              #for dim in model_data.dims: print(f"  {dim}: {model_data.values.shape}")
+              #print(model_data)
 
       handles, labels = ax.get_legend_handles_labels()
       ax.legend(handles, labels, loc='upper left', frameon=False)
-
-      self.save()
     
     except Exception as e: print(f"Visualization\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 

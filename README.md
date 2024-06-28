@@ -1,5 +1,5 @@
-# Climate Change Visualizations
-Projections of global temperature or local max temperature according to CMIP IPCC models.
+# Climate Change Forecast Visualizations
+Projections of global temperature and local max temperature according to CMIP6 IPCC models.
 
 ## Global temperature projections (CMIP6 models)
 Coupled Model Intercompari-son Project, phase 6 (CMIP6), run by the World Climate Research Programme
@@ -8,7 +8,9 @@ Thare are currently 46 models available (mid 2024).
 - 28 models have both ssp126 and ssp245 
 - 8 models have ssp119, ssp126 and ssp245 
 
-
+### Model selection
+TCR 1.4-2.2º deemed as "likely" in IPCC AR6 (Sixth Assessment Report of Intergovernmental Panel on Climate Change)
+Alternatively AR6 assessed-warming projections
 
 ### Most complete set of models covering most scenarios (so far)
 ![Global temperature projections (CMIP6 models)](charts/latest_most_complete.png)
