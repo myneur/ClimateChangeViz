@@ -24,27 +24,26 @@ def metadata(models, experiments, date=2014):
       print(data['date_ranges'])
 
 
-def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, skip_failing_scenarios=False, forecast_from=2015): # WIP
-  unavailable_experiments = status['unavailable_experiments'][variable]  
+def download(models, experiments, DATADIR, variable='near_surface_air_temperature', frequency='monthly', area=None, mark_failing_scenarios=False, skip_failing_scenarios=False, forecast_from=2015, start=1850, end=2100, fileformat='zip'): 
 
-  separator = '='*60
-  print(f'\n\nRequesting {variable} {frequency} {experiments} for {models}\n{separator}\n')
+  unavailable_experiments = status['unavailable_experiments'][variable] 
+
   for experiment in experiments:
     if experiment == 'historical':
-      variable = '2m_temperature'
-      start = 1850
-      till = forecast_from-1      
+      end = forecast_from-1      
     else:
       start = forecast_from
-      till = 2100
+    date = f'{start}-01-01/{end}-12-31'
 
-    date = f'{start}-01-01/{till}-12-31'
+    separator = '='*60
+    print(f'\n\nRequesting {variable} {frequency} {experiments} for {models} {start}-{end}\n{separator}\n')
+
     for model in models:
       if not skip_failing_scenarios or (experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment])):
         try:
-          filename = f'{DATADIR}cmip6_monthly_{start}-{till}_{experiment}_{model}.zip'
+          filename = f'{DATADIR}cmip6_monthly_{start}-{end}_{experiment}_{model}.{fileformat}'
           if not os.path.isfile(filename):
-            params = {'format': 'zip',
+            params = {'format': fileformat,
               'temporal_resolution': frequency,
               'experiment': f'{experiment}',
               'level': 'single_levels',
@@ -56,9 +55,12 @@ def download(models, experiments, DATADIR, variable='near_surface_air_temperatur
               params['month'] = ['06', '07', '08']
 
             if area: params['area'] = area
+            
             print(f'REQUESTING: {experiment} from {model} for {date}')
+            
             c.retrieve('projections-cmip6', params, filename)
-            util.unzip(filename, DATADIR)
+            if fileformat == 'zip':
+              util.unzip(filename, DATADIR)
           else:
             print(f'REUSING: {experiment} for {model}')
         except Exception as e:
