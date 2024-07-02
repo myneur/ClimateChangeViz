@@ -4,7 +4,7 @@
 
 # Calculations based on colab notebook: ecmwf-projects.github.io/copernicus-training-c3s/projections-cmip6.html
 
-# Data-sets: cds.climate.copernicus.eu/cdsapp#!/dataset/projections-cmip6 | Models list/search on: aims2.llnl.gov
+# Data-sets: cds.climate.copernicus.eu/cdsapp#!/dataset/projections-cmip6 | Model availability: cds.climate.copernicus.eu | All models list/search on: aims2.llnl.gov
 
 # TODO
 # 2. Include all models with either by best estimate of AR6 or TCR Screen (likely) 1.4-2.2º as guided on https://www.nature.com/articles/d41586-022-01192-2.epdf
@@ -67,9 +67,7 @@ def main():
   #return GlobalTemperature()
   return maxTemperature()
   #return tropicDaysBuckets()
-  
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
-
 
 # VISUALIZATIONS
 
@@ -78,28 +76,49 @@ experiments = list(scenarios['to-visualize'].keys())
 def GlobalTemperature():
   variable = 'temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  #models = md[variable]
-  models = md["all_models"].keys()
+  models = pd.read_csv('metadata/models.csv')
+  print(models)
+  likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
+  print(likely_models)
 
   #models = set(); for s in md["by_states"].items(): models |= set(s[1])
 
-  unavailable_experiments = downloader.download(models, experiments, DATADIR, mark_failing_scenarios=mark_failing_scenarios, skip_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+  unavailable_experiments = downloader.download(models['model'].values, experiments, DATADIR, 
+    skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
   aggregate(var='tas')
   data = loadAggregated()
   data = data['tas']
   data = cleanUpData(data)
   
-  #data = models_with_all_experiments(data, drop_experiments=['ssp119'])
-  data = models_with_all_experiments(data)
+  #data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
+  data = models_with_all_experiments(data, dont_count_historical=True)
+  #data = models_with_all_experiments(data, keep_all_historical=False)
   
   quantile_ranges = quantiles(data, (.1, .5, .9))
+  model_set = set(data.model.values.flat)
+
+  likely_model_set = data.sel(model = data.model.isin(likely_models['model'].values))
+  likely_t = quantiles(likely_model_set, [.5])
+
+  preindustrial_t = preindustrial_temp(quantile_ranges[1])
 
   chart = visualizations.Charter(variable=variable, 
-    title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', )
+    title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
+    zero=preindustrial_t, reference_lines=[0, 2]
+    )
+  
   chart.plot(
     data, ranges=quantile_ranges, 
-    zero=preindustrial_temp(quantile_ranges[1]), 
-    reference_lines=[0, 2], labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
+    labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
+
+  #chart.plot(likely_model_set, ranges=quantiles(likely_model_set, (.1, .5, .9)), zero=preindustrial_t, labels=scenarios['to-visualize']) 
+
+  #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+  #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+  #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
+
+  #chart.rightContext([final_t_likely, final_t_all])
+
   chart.show()
   chart.save()
   return data
@@ -109,7 +128,7 @@ def maxTemperature():
   variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
   #models = md['daily_models']
-  models = list(md["all_models"].keys())
+  models = list(md["all_models"])
 
   unavailable_experiments = downloader.download(
     models[0:0], 
@@ -121,7 +140,7 @@ def maxTemperature():
   aggregate(var='tasmax')
   
   data = cleanUpData(loadAggregated())
-  data = models_with_all_experiments(data)
+  data = models_with_all_experiments(data, dont_count_historical=True)
 
   data = data['tasmax']
   quantile_ranges = quantiles(data, (.1, .5, .9))
@@ -129,18 +148,20 @@ def maxTemperature():
 
   chart = visualizations.Charter(variable=variable,
     title=f'Maximal temperature (in Czechia) projections ({len(set(data.model.values.flat))} CMIP6 models)', 
-    ylabel='Max Temperature (°C)')
+    ylabel='Max Temperature (°C)',
+    reference_lines=[preindustrial_temp(quantile_ranges[1]),40]
+    )
   
   chart.plot(
     data, ranges=quantile_ranges, 
-    reference_lines=[preindustrial_temp(quantile_ranges[1]),40], labels=scenarios['to-visualize'])
+    labels=scenarios['to-visualize'])
   chart.show()
   chart.save()
 
 def tropicDaysBuckets():
   variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
-  models = list(md["all_models"].keys())
+  models = list(md["all_models"])
 
   unavailable_experiments = downloader.download(
     models[0:0], 
@@ -153,7 +174,7 @@ def tropicDaysBuckets():
   
   data = cleanUpData(loadAggregated())
 
-  data = models_with_all_experiments(data)
+  data = models_with_all_experiments(data, dont_count_historical=True)
 
   model_count = len(set(data.model.values.flat))
   models = data.model.values.flat
@@ -162,10 +183,10 @@ def tropicDaysBuckets():
   chart = visualizations.Charter(variable=variable, models=models,
     title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
     subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
-    ylabel='Tropic days annualy')
-  chart.stack(
-    data, 
+    ylabel='Tropic days annualy',
     marker=forecast_from)
+    
+  chart.stack(data)
   chart.show()
   chart.save()
 
@@ -174,17 +195,24 @@ def discovery():
   #models = ["CIESM", "CMCC-CM2-SR5", "FGOALS-g3", "NorESM2-MM", "MPI-ESM-1-2-HAM", "INM-CM4-8", "TaiESM1", "HadGEM3-GC31-MM", "NorESM2-LM", "MIROC-ES2L", "CAS-ESM2-0", "BCC-CSM2-MR", "ACCESS-CM2", "NESM3", "E3SM-1-0", "INM-CM5-0", "KACE-1-0-G", "FGOALS-f3-L", "CNRM-ESM2-1", "MRI-ESM2-0", "CESM2-WACCM-FV2", "CanESM5", "MPI-ESM1-2-HR", "CNRM-CM6-1", "EC-Earth3", "IITM-ESM", "MIROC6", "GISS-E2-2-G", "EC-Earth3-Veg", "CESM2", "CNRM-CM6-1-HR", "SAM0-UNICON", "GISS-E2-1-H", "MPI-ESM1-2-L", "AWI-CM-1-1-MR", "MCM-UA-1-0", "GFDL-CM4", "ACCESS-ESM1-5", "HadGEM3-GC31-LL", "CAMS-CSM1-0", "UKESM1-0-LL", "MPI-ESM1-2-LR", "FIO-ESM-2-0", "NorCPM1", "CanESM5-CanOE", "GFDL-ESM4", "IPSL-CM6A-LR", "BCC-ESM1", "CESM2-WACCM"]
   #models = md['smaller_models4testing']
   models = list(md["all_models"].keys())
+  missing245 = ['CanESM5', 'ACCESS-ESM1-5', 'CESM2-WACCM', 'EC-Earth3', 'EC-Earth3-Veg', 'CMCC-ESM2', 'CESM2', 'CMCC-CM2-SR5', 'GISS-E2-1-G', 'GFDL-CM4', 'MPI-ESM1-2-HR', 'CIESM']
+  modelsfrom2020 = ["CESM2","CIESM","CMCC-ESM2","CMCC-CM2-SR5"]
+
+  models = list(set(missing245)-set(modelsfrom2020))
+
+  print(models)
   downloader.download(
-    ['ACCESS-CM2','CESM2', 'CIESM', 'CMCC-CM2'], 
-    [ 'ssp245'], 
+    ['canesm5'], 
+    ['ssp245'], 
     DATADIR, 
-    variable='near_surface_air_temperature', frequency='monthly',
+    variable='surface_temperature', frequency='monthly',
     #variable='daily_maximum_near_surface_air_temperature', frequency='daily',
-    area=md['area']['cz'],
-    start=2000,
+    #area=md['area']['cz'],
+    start=2020,
+    forecast_from=2020,
     end=2030,
-    forecast_from=2010,
-    skip_failing_scenarios=True, mark_failing_scenarios=True, 
+    skip_failing_scenarios=False, mark_failing_scenarios=True, 
+    fileformat='zip' #zip tgz netcdf grib
     )
   aggregate(var='tas')
   data = loadAggregated()
@@ -311,9 +339,9 @@ def aggregate(stacked=None, var='tas'):
       if reaggregate or not len(candidate_files):
         print('.', end='')
         geog_agg(filename, var=var, buckets=stacked)
-      print()
 
     except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+  print()
 
 def loadAggregated(models=None, experiments=None, unavailable_experiments=None, wildcard=''):
   print('Opening aggregations')
@@ -368,13 +396,14 @@ def cleanUpData(data):
 
   except Exception as e: print(f"Error: {type(e).__name__}: {e}"); traceback.print_exc()  
 
-def models_with_all_experiments(data, drop_experiments=None):
+def models_with_all_experiments(data, dont_count_historical=False, drop_experiments=None):
 
   if drop_experiments:
     data = data.sel(experiment =~ data.experiment.isin(drop_experiments))
 
   experiments = set(data.experiment.values.flat)
-  experiments = experiments - {'historical'} 
+  if dont_count_historical:
+    experiments = experiments - {'historical'} 
   availability = []
   for experiment in experiments:
 
@@ -382,8 +411,7 @@ def models_with_all_experiments(data, drop_experiments=None):
     availability.append(available)
     #print(experiment)
     #print(len(available), ' '.join(available))
-    print(f'\n{experiment}: {len(available)} models')
-    print(available)
+    print(f"\n{experiment}: {len(available)} models\n{' '.join(available)}")
 
   keep = availability[0]
   for a in availability[1:]:
@@ -394,8 +422,7 @@ def models_with_all_experiments(data, drop_experiments=None):
   data = data.dropna(dim='model', how='all')
   
   remained = set(data.model.values.flat)
-  print(f"remained: {len(remained)} models")
-  print(remained)
+  print(f"remained: {len(remained)} models\n{remained}")
 
   return data
 

@@ -12,11 +12,12 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable=None, models=None, title=None, subtitle=None, ylabel=None, format='png', size=None):
+  def __init__(self, variable=None, models=None, title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, marker=None):
     self.variable = variable
     self.models = models
     self.format = format
     self.size = size
+    self.marker = marker
 
     fig, ax = plt.subplots(1, 1)
     if self.size: fig.set_size_inches(self.size[0], self.size[1])
@@ -30,6 +31,32 @@ class Charter:
       'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
       'series': ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']}
 
+    self._zero = zero
+    if zero: self.zero(zero)
+    if reference_lines: self.reference_lines(reference_lines)
+
+
+  def zero(self, zero):
+    self._zero = zero
+    if not (np.isnan(zero) and not np.isinf(zero)):
+      yticks = [0, 1.5, 2, 3]
+      plt.gca().set_yticks([val + zero for val in yticks])
+      self.ax.set_ylim([-1 +zero, 4 + zero])
+      plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
+    else:
+      if self.variable == 'max_temperature':
+        #ax.set_ylim([34, 40])
+        self.ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
+
+    self._xaxis_climatic(self.ax, marker=self.marker)
+
+  def reference_lines(self, reference_lines):
+    zero = self._zero if self._zero else 0
+    self.ax.axhline(y=zero+reference_lines[0], color='#717174') # base
+    for ref in reference_lines[1:]:
+      self.ax.axhline(y=zero+ref, color='#E34D21', linewidth=.5)
+    plt.grid(axis='y')
+
   def show(self):
     # CONTEXT
     context = "models: " + ' '.join(map(str, self.models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
@@ -40,10 +67,9 @@ class Charter:
   def save(self):
     self.fig.savefig(f'charts/chart_{self.variable}_{len(self.models)}m.'+self.format)
     
-  def stack(self, data, marker=None):
+  def stack(self, data):
     ax = self.ax
     try:
-      self._xaxis_climatic(ax, marker=marker)        
 
       years = data.year.values #years = data.coords['year'].values
 
@@ -71,35 +97,26 @@ class Charter:
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-  def plot(self, data, ranges=None, what='mean', zero=None, reference_lines=None, labels=None, marker=None):
+  def rightContext(self, data):
+    ax = self.ax
+    for d in data:
+      ax.plot([ax.get_xlim()[1]], [d], 'ro')
+      ax.annotate('Point', 
+        xy=(1, d), 
+        xycoords='axes fraction', 
+        xytext=(10, 0), textcoords='offset points',
+        arrowprops=dict(facecolor='black', shrink=0.05),
+        horizontalalignment='right', verticalalignment='bottom')
+
+
+
+  def plot(self, data, ranges=None, what='mean', labels=None):
     ax = self.ax
     colors = self.palette['series']
     try:
       self.models = set(data.model.values.flat)
       
-      # SCALE
-      if zero and not (np.isnan(zero) and not np.isinf(zero)):
-        if zero:
-          yticks = [0, 1.5, 2, 3]
-          plt.gca().set_yticks([val + zero for val in yticks])
-          ax.set_ylim([-1 +zero, 4 + zero])
-          plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
-      else:
-        if self.variable == 'max_temperature':
-          #ax.set_ylim([34, 40])
-          ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
 
-      self._xaxis_climatic(ax, marker=marker)
-
-      if reference_lines: 
-        if not zero:
-          zero = 0
-        ax.axhline(y=zero+reference_lines[0], color='#717174') # base
-        for ref in reference_lines[1:]:
-          ax.axhline(y=zero+ref, color='#E34D21', linewidth=.5)
-        plt.grid(axis='y')
-
-      
       # DATA
       if what == 'mean':
         series = data.experiment.values
@@ -164,8 +181,8 @@ class Charter:
     ax.set(xlim=(1850, 2100))
     plt.subplots_adjust(left=.08, right=.97, top=0.95, bottom=0.15)
     ax.yaxis.label.set_size(14)
-    xticks_major = [1850, 2000, 2015, 2050, 2075, 2100]
-    bisect.insort(xticks_major, current_year)
+    xticks_major = [1850, 1900, 1950, 2000, 2015, 2050, 2075, 2100]
+    #bisect.insort(xticks_major, current_year)
 
     xticks_minor = [1900, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
     xtickvals_minor = ['Industrial Era', 'Baby Boomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
