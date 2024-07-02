@@ -12,9 +12,9 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable=None, models=None, title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, marker=None):
+  def __init__(self, variable=None, models=[], title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, marker=None):
     self.variable = variable
-    self.models = models
+    self.models = set(models)
     self.format = format
     self.size = size
     self.marker = marker
@@ -109,8 +109,35 @@ class Charter:
         horizontalalignment='right', verticalalignment='bottom')
 
 
+  def plot(self, data, labels=None, models=[], ranges=False):
+    ax = self.ax
+    colors = self.palette['series']
+    try:    
+      self.models = self.models | set(models)
 
-  def plot(self, data, ranges=None, what='mean', labels=None):
+      series = data[0].experiment.values
+      legend = [labels[s] for s in series] if labels else series
+      for i in np.arange(len(series)):
+        try:
+          alpha=0.03 if legend[i] == 'hindcast' else 0.07
+          if ranges:
+            ax.fill_between(data[0].year, data[0][i,:], data[-1][i,:], alpha=alpha, color=f'{colors[i]}')
+          else:
+            for line in data:
+              ax.plot(data[0].year, line[i,:], 
+                color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
+          
+        except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+      
+
+      handles, labels = ax.get_legend_handles_labels()
+      ax.legend(handles, labels, loc='upper left', frameon=False)
+    
+    except Exception as e: print(f"Visualization\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+
+
+
+  def plotDiscovery(self, data, ranges=None, what='mean', labels=None):
     ax = self.ax
     colors = self.palette['series']
     try:

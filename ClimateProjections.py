@@ -64,8 +64,8 @@ import traceback
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 def main():
-  #return GlobalTemperature()
-  return maxTemperature()
+  return GlobalTemperature()
+  #return maxTemperature()
   #return tropicDaysBuckets()
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
@@ -106,10 +106,9 @@ def GlobalTemperature():
     title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
     zero=preindustrial_t, reference_lines=[0, 2]
     )
-  
-  chart.plot(
-    data, ranges=quantile_ranges, 
-    labels=scenarios['to-visualize']) #ylabel='Temperature difference from 1850-1900'
+
+  chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
+  chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
   #chart.plot(likely_model_set, ranges=quantiles(likely_model_set, (.1, .5, .9)), zero=preindustrial_t, labels=scenarios['to-visualize']) 
 
@@ -146,15 +145,20 @@ def maxTemperature():
   quantile_ranges = quantiles(data, (.1, .5, .9))
   maxes = {'Madrid': 35}
 
+  #print(data)
+  #print(quantile_ranges[0])
+
+  model_set = set(data.model.values.flat)
+
   chart = visualizations.Charter(variable=variable,
-    title=f'Maximal temperature (in Czechia) projections ({len(set(data.model.values.flat))} CMIP6 models)', 
+    title=f'Maximal temperature (in Czechia) projections ({len(model_set)} CMIP6 models)', 
     ylabel='Max Temperature (°C)',
     reference_lines=[preindustrial_temp(quantile_ranges[1]),40]
     )
   
-  chart.plot(
-    data, ranges=quantile_ranges, 
-    labels=scenarios['to-visualize'])
+  chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
+  chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
+
   chart.show()
   chart.save()
 
@@ -224,7 +228,7 @@ def discovery():
   #quantile_ranges = quantiles(data, (.1, .5, .9))
   #chart.plot(data, ranges=quantile_ranges, what='mean')
   
-  chart.plot(data, what={'experiment':'ssp245'})
+  chart.plotDiscovery(data, what={'experiment':'ssp245'})
   #chart.plot(data, what={'experiment':'historical'})
   chart.show()
   return data
