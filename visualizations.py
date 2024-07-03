@@ -110,15 +110,20 @@ class Charter:
         horizontalalignment='right', verticalalignment='bottom')
 
 
-  def plot(self, data, labels=None, models=[], ranges=False, alpha=None):
+  def plot(self, data, labels=None, models=[], ranges=False, alpha=None, color=None, series='experiment', dimensions=None, linewidth=1.8):
     ax = self.ax
     colors = self.palette['series']
     try:    
+
       self.models = self.models | set(models)
 
-      series = data[0].experiment.values
+      # TODO refactor so it's all in one xarray
+      years = data[0].year
+      series = data[0][series].values
+      
       if labels:
         legend = [labels[s] for s in series] if labels else series
+
       for i in np.arange(len(series)):
         try:
           if ranges: 
@@ -126,15 +131,17 @@ class Charter:
           else:
             if not alpha: alpha = 1
           if ranges:
-            ax.fill_between(data[0].year, data[0][i,:], data[-1][i,:], alpha=alpha, color=f'{colors[i]}')
+            #for quantile in data[ranges].values.flat:
+            ax.fill_between(years, data[0][i,:], data[-1][i,:], alpha=alpha, color=f'{colors[i]}')
           else:
-            for line in data:
+            #for model in data[dimension].values.flat:
+            for serie in data:
               if labels:
-                ax.plot(data[0].year, line[i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8, alpha=alpha)
+                ax.plot(years, serie[i,:], color=f'{colors[i%len(colors)] if not color else color}', label=f'{legend[i]}', linewidth=linewidth, alpha=alpha)
               else:
-                ax.plot(data[0].year, line[i,:], color=f'{colors[i%len(colors)]}', linewidth=1.8, alpha=alpha)
+                ax.plot(years, serie[i,:], color=f'{colors[i%len(colors)] if not color else color}', linewidth=linewidth, alpha=alpha)
           
-        except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+        except Exception as e: print(f"Error in {legend[i] if labels else ''}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
       
 
       handles, labels = ax.get_legend_handles_labels()

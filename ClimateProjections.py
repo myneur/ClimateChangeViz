@@ -77,14 +77,12 @@ def GlobalTemperature():
   variable = 'temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
   models = pd.read_csv('metadata/models.csv')
-  print(models)
   likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
-  print(likely_models)
 
   #models = set(); for s in md["by_states"].items(): models |= set(s[1])
 
-  unavailable_experiments = downloader.download(models['model'].values, experiments, DATADIR, 
-    skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+  #unavailable_experiments = downloader.download(models['model'].values, experiments, DATADIR, 
+  #  skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
   aggregate(var='tas')
   data = loadAggregated()
   data = data['tas']
@@ -106,10 +104,22 @@ def GlobalTemperature():
   chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
   chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
-  likely_model_set = data.sel(model = data.model.isin(likely_models['model'].values))
-  likely_t = quantiles(likely_model_set, [.5])
+  likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
+  likely_t = quantiles(likely_data, [.5])
+  chart.plot(likely_t, alpha=.6)
 
-  chart.plot(likely_t, alpha=.5)
+  m1 = models[models['model'].isin(model_set)]
+  print(f"ALL {len(m1)}× ⌀{m1['tcr'].mean()}:.2f")
+
+  m2 = models[models['model'].isin(likely_data.model.values.flat)]
+  print(f"LIKELY {len(m2)}× ⌀{m2['tcr'].mean()}:.2f")
+
+  chart.show()
+  chart.save()
+
+  
+  classify_models(data, models, likely_data, likely_models, preindustrial_t)
+
 
   #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
   #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
@@ -117,9 +127,49 @@ def GlobalTemperature():
 
   #chart.rightContext([final_t_likely, final_t_all])
 
+  
+  return data
+
+
+def classify_models(data, models, likely_data, likely_models, preindustrial_t):
+  hot_models = models[(models['tcr'] > 2.2)]['model'].values
+
+
+  unlikely_data = data.sel(model = ~data.model.isin(likely_models['model'].values))
+  unlikely_t = quantiles(unlikely_data, [.5])
+  unlikely_model_set = set(unlikely_data.model.values.flat)
+  m3 = models[models['model'].isin(unlikely_model_set)]
+  
+  print(f"UNLIKELY {len(m3)}× ⌀{m3['tcr'].mean()}:.2f")
+
+  chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', zero=preindustrial_t, reference_lines=[0, 2])
+
+  for model in data.model.values.flat:
+    if model in hot_models:
+      color = 'red' 
+    elif model in likely_models['model'].values: 
+      color = 'green'
+    else:
+      color = 'blue'
+    if data.sel(model=model, experiment='historical').where(data['year'] <1860, drop=True).mean().item()-preindustrial_t >= .8: 
+      print(f'{model} historical too hot')
+    else:
+      chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=1, color=color, linewidth=.5)
+  
   chart.show()
   chart.save()
-  return data
+
+  
+  # Temperature rise for models ordered by TCR
+  models = models.sort_values(by='tcr')
+  for model in models['model']:
+    try:
+      m = data.sel(model=model, experiment='ssp245')
+      t = m.where(data['year'] >2090, drop=True).mean().item() - preindustrial_t
+      tcr = models.loc[models['model'] == model, 'tcr'].values[0]
+      print(f"tcr: {tcr:.1f} +{t:.1f}° {model}")
+    except:
+      print(f'missing {model}')
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
 def maxTemperature():
@@ -155,7 +205,7 @@ def maxTemperature():
     reference_lines=[preindustrial_temp(quantile_ranges[1]),40]
     )
   
-  chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
+  chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges='quantile', labels=scenarios['to-visualize'], models=model_set)
   chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
   chart.show()
@@ -247,6 +297,9 @@ def quantiles(data, quantiles):
     quantilized.append(data.quantile(q, dim='model'))
   
   return quantilized
+
+  quantilized = xr.concat([data.quantile(q, dim='model') for q in quantiles], dim='quantile')
+  quantilized['quantile'] = quantiles  # name coordinates
 
 def create_buckets(da_agg):
   t30 = ((da_agg >= (30+K)) & (da_agg < (35+K))).resample(time='YE').sum(dim='time')
