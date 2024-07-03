@@ -32,8 +32,15 @@ class Charter:
       'series': ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']}
 
     self._zero = zero
-    if zero: self.zero(zero)
+    if zero: 
+      self.zero(zero)
+    else:
+      if self.variable == 'max_temperature':
+        #ax.set_ylim([34, 40])
+        self.ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
+
     if reference_lines: self.reference_lines(reference_lines)
+    self._xaxis_climatic(self.ax)
 
 
   def zero(self, zero):
@@ -43,12 +50,6 @@ class Charter:
       plt.gca().set_yticks([val + zero for val in yticks])
       self.ax.set_ylim([-1 +zero, 4 + zero])
       plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
-    else:
-      if self.variable == 'max_temperature':
-        #ax.set_ylim([34, 40])
-        self.ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
-
-    self._xaxis_climatic(self.ax, marker=self.marker)
 
   def reference_lines(self, reference_lines):
     zero = self._zero if self._zero else 0
@@ -109,23 +110,29 @@ class Charter:
         horizontalalignment='right', verticalalignment='bottom')
 
 
-  def plot(self, data, labels=None, models=[], ranges=False):
+  def plot(self, data, labels=None, models=[], ranges=False, alpha=None):
     ax = self.ax
     colors = self.palette['series']
     try:    
       self.models = self.models | set(models)
 
       series = data[0].experiment.values
-      legend = [labels[s] for s in series] if labels else series
+      if labels:
+        legend = [labels[s] for s in series] if labels else series
       for i in np.arange(len(series)):
         try:
-          alpha=0.03 if legend[i] == 'hindcast' else 0.07
+          if ranges: 
+            alpha=0.03 if legend[i] == 'hindcast' else 0.07
+          else:
+            if not alpha: alpha = 1
           if ranges:
             ax.fill_between(data[0].year, data[0][i,:], data[-1][i,:], alpha=alpha, color=f'{colors[i]}')
           else:
             for line in data:
-              ax.plot(data[0].year, line[i,:], 
-                color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
+              if labels:
+                ax.plot(data[0].year, line[i,:], color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8, alpha=alpha)
+              else:
+                ax.plot(data[0].year, line[i,:], color=f'{colors[i%len(colors)]}', linewidth=1.8, alpha=alpha)
           
         except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
       
@@ -211,20 +218,19 @@ class Charter:
     xticks_major = [1850, 1900, 1950, 2000, 2015, 2050, 2075, 2100]
     #bisect.insort(xticks_major, current_year)
 
-    xticks_minor = [1900, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
-    xtickvals_minor = ['Industrial Era', 'Baby Boomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
+    xticks_minor = [1899, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
+    xtickvals_minor = ['Industrial\nEra', 'Baby\nBoomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
 
     ax.set_xticks(xticks_major) 
     ax.set_xticklabels(xticks_major)
     ax.set_xticks(xticks_minor, minor=True)  
-    ax.set_xticklabels(xtickvals_minor, minor=True, rotation=35, va='bottom', ha='right',  fontstyle='italic', color='#b2b2b2', fontsize=11)
+    ax.set_xticklabels(xtickvals_minor, minor=True, rotation=25, va='bottom', ha='center',  fontstyle='italic', color='#b2b2b2', fontsize=11)
     ax.xaxis.set_tick_params(which='minor', pad=70, color="white")
 
     for tick, label in zip(ax.get_xticks(), ax.get_xticklabels()):
       if tick == xticks_major[-1]: label.set_ha('right')
       elif tick == current_year: label.set_ha('left')
     
-    if marker:
-      ax.axvline(x=marker, color='white', linewidth=.5)
-    else:
-      ax.axvline(x=current_year, color='lightgray', linewidth=.5)
+    if self.marker:
+      ax.axvline(x=self.marker, color='white', linewidth=.5)
+    #else: ax.axvline(x=current_year, color='lightgray', linewidth=.5)

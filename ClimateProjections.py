@@ -90,15 +90,11 @@ def GlobalTemperature():
   data = data['tas']
   data = cleanUpData(data)
   
-  #data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
-  data = models_with_all_experiments(data, dont_count_historical=True)
-  #data = models_with_all_experiments(data, keep_all_historical=False)
+  data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
+  #data = models_with_all_experiments(data, dont_count_historical=True)
   
   quantile_ranges = quantiles(data, (.1, .5, .9))
   model_set = set(data.model.values.flat)
-
-  likely_model_set = data.sel(model = data.model.isin(likely_models['model'].values))
-  likely_t = quantiles(likely_model_set, [.5])
 
   preindustrial_t = preindustrial_temp(quantile_ranges[1])
 
@@ -110,7 +106,10 @@ def GlobalTemperature():
   chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
   chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
-  #chart.plot(likely_model_set, ranges=quantiles(likely_model_set, (.1, .5, .9)), zero=preindustrial_t, labels=scenarios['to-visualize']) 
+  likely_model_set = data.sel(model = data.model.isin(likely_models['model'].values))
+  likely_t = quantiles(likely_model_set, [.5])
+
+  chart.plot(likely_t, alpha=.5)
 
   #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
   #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
@@ -333,12 +332,12 @@ def geog_agg(filename, var='tas', buckets=None, area=None):
 
 def aggregate(stacked=None, var='tas'):
   dataFiles = list()
-  for i in glob(f'{DATADIR}tas*.nc'):
+  for i in glob(f'{DATADIR}{var}*.nc'):
       dataFiles.append(os.path.basename(i))
   for filename in dataFiles:
     model, experiment, variant, grid, time = filename.split('_')[2:7]
     try:
-      candidate_files = [f for f in os.listdir(DATADIR) if f.endswith('.nc') and f.startswith(f'cmip6_agg_{experiment}_{model}_{variant}_{grid}_{time}')] 
+      candidate_files = [f for f in os.listdir(DATADIR) if f.startswith(f'cmip6_agg_{experiment}_{model}_{variant}_{grid}_{time}')] 
       # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
       if reaggregate or not len(candidate_files):
         print('.', end='')
