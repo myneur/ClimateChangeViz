@@ -1,4 +1,3 @@
-cdsapi
 dask
 cftime
 zipfile
@@ -7,4 +6,6 @@ numpy
 pandas
 matplotlib
 cartopy
-
+python-dotenv
+cdsapi
+esgf-pyclient

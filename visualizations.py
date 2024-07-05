@@ -29,7 +29,7 @@ class Charter:
 
     self.palette = {
       'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
-      'series': ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']}
+      'series': ["#777777", '#3DB5AF','#61A3D2','#EE7F00', '#E34D21', 'black']}
 
     if zero: 
       self.zero(zero)

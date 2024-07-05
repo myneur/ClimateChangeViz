@@ -83,9 +83,6 @@ def GlobalTemperature():
   #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
   not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
 
-
-  #models = set(); for s in md["by_states"].items(): models |= set(s[1])
-
   #unavailable_experiments = downloader.download(models['model'].values, experiments, DATADIR, 
   #  skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
   aggregate(var='tas')
@@ -93,8 +90,8 @@ def GlobalTemperature():
   data = data['tas']
   data = cleanUpData(data)
   
-  data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
-  #data = models_with_all_experiments(data, dont_count_historical=True)
+  #data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
+  data = models_with_all_experiments(data, dont_count_historical=True)
   
   quantile_ranges = quantiles(data, (.1, .5, .9))
   model_set = set(data.model.values.flat)
@@ -119,39 +116,26 @@ def GlobalTemperature():
   #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
 
   m1 = models[models['model'].isin(model_set)]
-  print(f"ALL {len(m1)}× +{m1['tcr'].mean():.2f}° ⌀2100")
+  print(f"+{m1['tcr'].mean():.2f}° ⌀2100: ALL {len(m1)}× ")
   m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
-  print(f"NOT HOT {len(m2)}× +{m2['tcr'].mean():.2f}° ⌀2100")
+  print(f"+{m2['tcr'].mean():.2f}° ⌀2100: NOT HOT TCR {len(m2)}× ")
   m3 = models[models['model'].isin(likely_data.model.values.flat)]
-  print(f"LIKELY {len(m3)}× +{m3['tcr'].mean():.2f}° ⌀2100")
+  print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
   m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
-  print(f"NOT HOT {len(m4)}× +{m4['tcr'].mean():.2f}° ⌀2100")
+  print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
 
-  observations = []
-  for observation in ['gmt_HadCRUT5', 'gmt_NOAAGlobalTemp', 'gmt_Berkeley Earth']:
-    df = pd.read_csv(f'data/{observation}.csv')
-    observations.append(df)
-  
-  observations = pd.concat(observations)
-  observation = observations[['Year', observations.columns[1]]].groupby('Year').mean()
-  observation = observation[observation.index <= 2023]
+  #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+  #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+  #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
+  #chart.rightContext([final_t_likely, final_t_all])
 
 
-  #df.iloc[:, 0] = df.iloc[:, 0].astype(int)
-  chart.scatter(observation + preindustrial_t, label='Measurements')
+  chart.scatter(observations() + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
 
   chart.show()
   chart.save()
   
   classify_models(data, models, likely_data, likely_models, preindustrial_t)
-
-
-  #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
-  #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
-  #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
-
-  #chart.rightContext([final_t_likely, final_t_all])
-
   
   return data
 
@@ -307,11 +291,16 @@ def discovery():
   chart.show()
   return data
 
+def observations():
+  # OBSERVATIONS from https://climate.metoffice.cloud/current_warming.html
+  observations = [pd.read_csv(f'data/{observation}.csv') for observation in ['gmt_HadCRUT5', 'gmt_NOAAGlobalTemp', 'gmt_Berkeley Earth']]
+  observations = pd.concat(observations)
+  observation = observations[['Year', observations.columns[1]]].groupby('Year').mean()
+  return observation[observation.index <= 2023]
 
 def history():
   # not working yet: https://web.archive.org/web/20240516185454/https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-land?tab=form
   unavailable_experiments = downloader.reanalysis()
-
 
 
 # COMPUTATION
@@ -493,25 +482,19 @@ def models_with_all_experiments(data, dont_count_historical=False, drop_experime
   experiments = set(data.experiment.values.flat)
   if dont_count_historical:
     experiments = experiments - {'historical'} 
-  availability = []
-  for experiment in experiments:
+  
+  models_by_experiment = {experiment: data.sel(experiment=experiment).dropna(dim='model', how='all').model.values for experiment in experiments}
+  available = [models[1] for models in models_by_experiment.items()]
+  intersection = set(available[0]).intersection(*available[1:]) if available else []
 
-    available = set(data.sel(experiment=experiment).dropna(dim='model', how='all').model.values)
-    availability.append(available)
-    #print(experiment)
-    #print(len(available), ' '.join(available))
-    print(f"\n{experiment}: {len(available)} models\n{' '.join(available)}")
-
-  keep = availability[0]
-  for a in availability[1:]:
-    keep &= a
-
-  keep = list(keep)
-  data = data.sel(model = data.model.isin(keep))
+  data = data.sel(model = data.model.isin(list(intersection)))
   data = data.dropna(dim='model', how='all')
   
   remained = set(data.model.values.flat)
-  print(f"remained: {len(remained)} models\n{remained}")
+
+  print(f"\n{len(remained)} remained:  models")
+  for experiment in models_by_experiment.items():
+    print(f"{len(experiment[1])}⨉ {experiment[0]}, except: {sorted(set(experiment[1])-remained)}")
 
   return data
 
