@@ -89,8 +89,8 @@ def GlobalTemperature():
 
   data = normalize(data)
   
-  #data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
-  data = models_with_all_experiments(data, dont_count_historical=True)
+  data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
+  #data = models_with_all_experiments(data, dont_count_historical=True)
   
   quantile_ranges = quantiles(data, (.1, .5, .9))
   model_set = set(data.model.values.flat)
@@ -499,15 +499,17 @@ def cleanUpData(data):
   except Exception as e: print(f"Error: {type(e).__name__}: {e}"); traceback.print_exc()  
 
 def normalize(data):
-  return data
-  model_mean = data.sel(year=slice(forecast_from-20, forecast_from-1)).mean(dim='year')
+  
+  model_mean = data.sel(experiment='historical').sel(year=slice(forecast_from-20, forecast_from-1)).mean(dim='year')
 
-  global_mean = model_mean.sel(experiment='historical').mean(dim='model')
+  global_mean = model_mean.mean(dim='model').item()
 
   normalization_offset = model_mean - global_mean
-  normalization_offset_expanded = normalization_offset.expand_dims(dim={'year': data.year}).transpose('model', 'experiment', 'year')
+  normalization_offset_expanded = normalization_offset.expand_dims(dim={'year': data.year}).transpose('model', 'year')
 
   normalized_data = data - normalization_offset_expanded
+
+  #print(f"NORMALIZED {normalized_data.sel(experiment='ssp126', model=normalized_data.model.values.flat[0], year=slice(2014,2015))}")
 
   return normalized_data
 
