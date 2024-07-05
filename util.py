@@ -39,7 +39,7 @@ def debug(msg, e, limit=1):
 
 def loadTCRfromNatureComArticle():
   xls = 'nature.com/CMIP6 ECS 41586_2022_CM20344978_MOESM1_ESM.20352690.xls'
-  table = pd.ExcelFile(xls)
+  #table = pd.ExcelFile(xls)
   sheet_tcr = pd.read_excel(xls, sheet_name='ECSTCR')
   models = sheet_tcr.iloc[2:60, 0].reset_index(drop=True)
   tcrs = sheet_tcr.iloc[2:60, 3].reset_index(drop=True)
