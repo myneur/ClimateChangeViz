@@ -12,7 +12,7 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable=None, models=[], title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, marker=None):
+  def __init__(self, variable=None, models=[], title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, ylimit=None, marker=None):
     self.variable = variable
     self.models = set(models)
     self.format = format
@@ -31,13 +31,15 @@ class Charter:
       'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
       'series': ['black','#3DB5AF','#61A3D2','#EE7F00', '#E34D21']}
 
-    self._zero = zero
     if zero: 
       self.zero(zero)
     else:
+      self._zero = 0
       if self.variable == 'max_temperature':
         #ax.set_ylim([34, 40])
         self.ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
+
+    if ylimit: self.ylimit(ylimit)
 
     if reference_lines: self.reference_lines(reference_lines)
     self._xaxis_climatic(self.ax)
@@ -48,8 +50,12 @@ class Charter:
     if not (np.isnan(zero) and not np.isinf(zero)):
       yticks = [0, 1.5, 2, 3]
       plt.gca().set_yticks([val + zero for val in yticks])
-      self.ax.set_ylim([-1 +zero, 4 + zero])
       plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
+
+  def ylimit(self, y):
+    self._ylimit = y
+    zero = self._zero if self._zero else 0
+    self.ax.set_ylim([y[0]+zero, y[1]+zero])
 
   def reference_lines(self, reference_lines):
     zero = self._zero if self._zero else 0
@@ -109,6 +115,10 @@ class Charter:
         arrowprops=dict(facecolor='black', shrink=0.05),
         horizontalalignment='right', verticalalignment='bottom')
 
+  def scatter(self, data, label=None):
+    ax = self.ax
+    ax.scatter(data.index.tolist(), data.iloc[:, 0], marker='o', color='black', s=7, label=label)
+    ax.legend(frameon=False)
 
   def plot(self, data, labels=None, models=[], ranges=False, alpha=None, color=None, series='experiment', dimensions=None, linewidth=1.8):
     ax = self.ax

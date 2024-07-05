@@ -7,7 +7,6 @@
 # Data-sets: cds.climate.copernicus.eu/cdsapp#!/dataset/projections-cmip6 | Model availability: cds.climate.copernicus.eu | All models list/search on: aims2.llnl.gov
 
 # TODO
-# 2. Include all models with either by best estimate of AR6 or TCR Screen (likely) 1.4-2.2º as guided on https://www.nature.com/articles/d41586-022-01192-2.epdf
 # 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
 # 5. historical data (measurements from the constant set of stations normalized to the lastest, most complete set, to be independent on addtions)
 
@@ -24,11 +23,11 @@ scenarios = { # CO2 emissions scenarios charted on https://www.carbonbrief.org/c
     'ssp126': "2° = carbon neutral in 2075",
     'ssp245': "3° = no decline till ½ millenia"},
   'out-of-focus': {
+    'ssp370': "4° = 2× emissions in 2100",
     'ssp534os': "peak at 2040, then steeper decline",
-    'ssp570': "4° = 2× emissions in 2100",
     'ssp585': "5° = 3× emissions in 2075"}
   }
-forecast_from = 2015 # Forecasts from 2014 or 2015? Hindcast untill 2018 or 2019?
+forecast_from = 2015 # Forecasts are actually from 2014. Hindcast untill 2018 or 2019?
 
 # MODELS to be downloaded – when empty, only already downloaded files will be visualized
 mark_failing_scenarios = True # Save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
@@ -59,7 +58,8 @@ import util
 from util import debug
 import traceback
 
-
+FAIL = '\033[91m'
+RESET = "\033[0m"
 
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
@@ -77,7 +77,12 @@ def GlobalTemperature():
   variable = 'temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
   
   models = pd.read_csv('metadata/models.csv')
-  likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
+
+  not_hot_models = models[models['tcr'] <= 2.2]
+  likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
+  #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
+  not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
+
 
   #models = set(); for s in md["by_states"].items(): models |= set(s[1])
 
@@ -98,25 +103,45 @@ def GlobalTemperature():
 
   chart = visualizations.Charter(variable=variable, 
     title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
-    zero=preindustrial_t, reference_lines=[0, 2]
+    zero=preindustrial_t, ylimit=[-1,4], reference_lines=[0, 2]
     )
 
   chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
   chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
+  not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
+  #chart.plot(quantiles(not_hot_data, [.5]), alpha=.6)
+
   likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
-  likely_t = quantiles(likely_data, [.5])
-  chart.plot(likely_t, alpha=.6)
+  #chart.plot(quantiles(likely_data, [.5]), alpha=.3)
+
+  not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
+  #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
 
   m1 = models[models['model'].isin(model_set)]
-  print(f"ALL {len(m1)}× ⌀{m1['tcr'].mean()}:.2f")
+  print(f"ALL {len(m1)}× +{m1['tcr'].mean():.2f}° ⌀2100")
+  m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
+  print(f"NOT HOT {len(m2)}× +{m2['tcr'].mean():.2f}° ⌀2100")
+  m3 = models[models['model'].isin(likely_data.model.values.flat)]
+  print(f"LIKELY {len(m3)}× +{m3['tcr'].mean():.2f}° ⌀2100")
+  m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
+  print(f"NOT HOT {len(m4)}× +{m4['tcr'].mean():.2f}° ⌀2100")
 
-  m2 = models[models['model'].isin(likely_data.model.values.flat)]
-  print(f"LIKELY {len(m2)}× ⌀{m2['tcr'].mean()}:.2f")
+  observations = []
+  for observation in ['gmt_HadCRUT5', 'gmt_NOAAGlobalTemp', 'gmt_Berkeley Earth']:
+    df = pd.read_csv(f'data/{observation}.csv')
+    observations.append(df)
+  
+  observations = pd.concat(observations)
+  observation = observations[['Year', observations.columns[1]]].groupby('Year').mean()
+  observation = observation[observation.index <= 2023]
+
+
+  #df.iloc[:, 0] = df.iloc[:, 0].astype(int)
+  chart.scatter(observation + preindustrial_t, label='Measurements')
 
   chart.show()
   chart.save()
-
   
   classify_models(data, models, likely_data, likely_models, preindustrial_t)
 
@@ -134,14 +159,6 @@ def GlobalTemperature():
 def classify_models(data, models, likely_data, likely_models, preindustrial_t):
   hot_models = models[(models['tcr'] > 2.2)]['model'].values
 
-
-  unlikely_data = data.sel(model = ~data.model.isin(likely_models['model'].values))
-  unlikely_t = quantiles(unlikely_data, [.5])
-  unlikely_model_set = set(unlikely_data.model.values.flat)
-  m3 = models[models['model'].isin(unlikely_model_set)]
-  
-  print(f"UNLIKELY {len(m3)}× ⌀{m3['tcr'].mean()}:.2f")
-
   chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', zero=preindustrial_t, reference_lines=[0, 2])
 
   for model in data.model.values.flat:
@@ -151,10 +168,17 @@ def classify_models(data, models, likely_data, likely_models, preindustrial_t):
       color = 'green'
     else:
       color = 'blue'
-    if data.sel(model=model, experiment='historical').where(data['year'] <1860, drop=True).mean().item()-preindustrial_t >= .8: 
-      print(f'{model} historical too hot')
+
+    first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()-preindustrial_t
+    if first_decade_t >= .8:
+      print(f'{model} historical hot')
+      linewidth=1.3
+    elif first_decade_t <=-.6: 
+      print(f'{model} historical cold')
+      linewidth=1.3
     else:
-      chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=1, color=color, linewidth=.5)
+      linewidth=.5
+    chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=1, color=color, linewidth=linewidth)
   
   chart.show()
   chart.save()
@@ -165,11 +189,12 @@ def classify_models(data, models, likely_data, likely_models, preindustrial_t):
   for model in models['model']:
     try:
       m = data.sel(model=model, experiment='ssp245')
-      t = m.where(data['year'] >2090, drop=True).mean().item() - preindustrial_t
+
+      t = m.where((data['year'] >=2090) & (data['year'] <= 2100), drop=True).mean().item() - preindustrial_t # some models go up to 2200
       tcr = models.loc[models['model'] == model, 'tcr'].values[0]
       print(f"tcr: {tcr:.1f} +{t:.1f}° {model}")
     except:
-      print(f'missing {model}')
+      pass #print(f'missing {model}')
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
 def maxTemperature():
@@ -381,7 +406,8 @@ def geog_agg(filename, var='tas', buckets=None, area=None):
     da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{variant}_{grid}_{time}.nc')
     #da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
 
-  except Exception as e: print(f"\nError aggregating {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+  #except OSError as e: print(f"\n{FAIL}Error loading model:{RESET} {type(e).__name__}: {e}")
+  except Exception as e: print(f"\n{FAIL}Error aggregating {filename}:{RESET} {type(e).__name__}: {e}"); traceback.print_exc()
 
 def aggregate(stacked=None, var='tas'):
   dataFiles = list()
@@ -451,6 +477,13 @@ def cleanUpData(data):
     return data
 
   except Exception as e: print(f"Error: {type(e).__name__}: {e}"); traceback.print_exc()  
+
+def normalize(data, year, value):
+  offset = value - data.sel(year=year)
+  # Expand the offset dimensions to match the original data dimensions
+  # This is necessary for broadcasting the addition
+  offset_expanded = offset.expand_dims(year=data.year, axis=0)
+  return data + offset_expanded
 
 def models_with_all_experiments(data, dont_count_historical=False, drop_experiments=None):
 
