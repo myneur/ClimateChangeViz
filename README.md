@@ -1,6 +1,7 @@
 # Climate Change Visualizations
 
 What are the latest projections of climate change?
+
 How likely are they?
 
 Let's visualize the latest knowledge of all CMIP6 models and their variability.
@@ -13,19 +14,23 @@ Let's visualize the latest knowledge of all CMIP6 models and their variability.
 ### Models covering 1.5 °C scenario (ssp119)
 ![Global temperature projections (CMIP6 models)](charts/latest_ssp119.png)
 
-## Maximal temperature (in Czechia) projections
+### Context
+Averages by the 50th quantile. Ranges by the 10-90th quantile. Normalized to last last 20 years of measurements. 
+
+
+## Maximum temperature projections
+
+### Maximum temperature in Czechia
 ![Local temperature max projections (CMIP6 models)](charts/latest_max.png)
 
-## Tropic days annualy (in Czechia) projections
+### Tropic days annualy in Czechia
 ![Local tropic days in the summer months with max temperatures over 30 °C projections (CMIP6 models)](charts/latest_tropic.png)
 
-## Context: Work in progress
-Averages by the 50th quantile. Ranges by the 10-90th quantile.
+### Context: Work In Progress
 
-Model data from [_Copernicus Climate Data Store_ ]((https://cds.climate.copernicus.eu/api-how-to)) and [_Earth System Grid Federation Data Portal_](https://aims2.llnl.gov/).
-Measurement data from [_Met Office_](https://climate.metoffice.cloud/current_warming.html)
+Maximum temperatures from the summer months: June-August.
 
-This is yet to be done.
+This is an early discovery. The max temperature aggregation is yet to be reviewed and compared with measurements. 
 
 ## Where are the projections from?
 
@@ -34,6 +39,12 @@ The most widely recognized projections are from the __Coupled Model Intercompari
 - __CMIP__ is a collaborative framework designed to improve our understanding of climate change through the systematic comparison of climate models. Their work is publicly shared with anyone for use or review.
 
 - CMIP shares __around 40 distinct climate models__ (mid 2024) created by [49 modelling groups](https://wcrp-cmip.github.io/CMIP6_CVs/docs/CMIP6_institution_id.html) from __17 countries all across the world__ from Europe, America, Asia, Australia and Oceania.
+
+### Data Sources
+Model data from [_Copernicus Climate Data Store_ ]((https://cds.climate.copernicus.eu/api-how-to)) or [_Earth System Grid Federation Data Portal_](https://aims2.llnl.gov/).
+
+Measurement data from [_Met Office_](https://climate.metoffice.cloud/current_warming.html)
+
 
 ## Variance in climate models
 
@@ -63,9 +74,26 @@ The scenarios visualized:
 
 # How to run it
 1. install python libraries in `requirements.txt`
-2. register on (https://cds.climate.copernicus.eu/) and get an API key in your user profile
-3. put your API key to `~/.cdsapirc` as [in this format](https://cds.climate.copernicus.eu/api-how-to)
+2. Register on Data Store: 
+    1. a. Copernicus (https://cds.climate.copernicus.eu/):
+    	- get an API key in your user profile
+    	- put your API key to `~/.cdsapirc` as [in this format](https://cds.climate.copernicus.eu/api-how-to)
+    2. ESGF:
+    	- get our Open Id in your user profile
+    	- put `ESGF_OPENID=***` & `ESGF_PASSWORD=***` to `~/.esgfenv`
 4. change `DATADIR` to the folder point where to download model data
+	- Toggle DownloaderCopernicus/DownloaderESGF to get missing models on either of them
 5. Run `python ClimateProjections.py`
+	- Un/comment visualization to be made in `main()` function
+	- Update `model` `experiment` when needed
 
 Tested only on python3.
+
+## Downloading
+
+Downloading is tricky, because not all models are available on all servers.
+
+- DownloaderCopernicus is easier to start with, but more models are missing there. 
+- DownloaderESGF has more models, but can be hard to tame. It might be necessary to add trusted certificates in the computer and try multiple servers and download method (`method='request'|'wget', server=0-7`).
+
+
