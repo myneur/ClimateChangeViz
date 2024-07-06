@@ -10,6 +10,7 @@ import ssl
 from dotenv import load_dotenv
 import urllib3 
 urllib3.disable_warnings() # Disable warnings for data download via API
+import traceback
 
 BLUE = "\033[34m" #BLUE = '\033[94m' #CYAN = '\033[96m'
 GREEN = '\033[32m'
@@ -160,20 +161,20 @@ class DownloaderESGF:
               if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
                   for attempt in range(self.max_tries):
                       try:
-                          results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon')
-                          results = results.search()
+                          results = []
+                          results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon').results.search()
                       except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                           if attempt < self.max_tries:
                             print(f"Tmeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
                             time.sleep(self.retry_delay)
                           else:
-                            print(f'❌ download failed {model} {experiment}: Timeout'); 
+                            print(f'❌ download search failed {model} {experiment}: Timeout'); 
                             break
-                      except requests.exceptions.RequestException as e:
-                          print(f'❌ download failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
+                      except (requests.exceptions.RequestException, Exception) as e:
+                          print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
                           break
                     
-                  if(results and len(results)):
+                  if(len(results)):
                       print(f'Found {model} {experiment}: {len(results)}×')
                       
                       results = sorted(results, key=self.splitByNums, reverse=True) # latest release at the top
@@ -358,9 +359,7 @@ def main():
     #show_server_certification_issuers(DownloaderESGF.servers[0])
     datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=1)
     #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), skip_failing_scenarios=False)
-    #results = datastore.download(['CESM2-WACCM'], ['ssp245'])
-    results = datastore.download(['EC-Earth3'], ['ssp126'])
-    #results = datastore.download(['KIOST-ESM'], ['ssp126'])
+    results = datastore.download(['HadGEM3-GC31-MM', 'IPSL-CM5A2-INCA', 'KIOST-ESM'], ['ssp245'])
 
 
 if __name__ == "__main__":
