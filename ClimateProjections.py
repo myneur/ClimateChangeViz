@@ -79,9 +79,8 @@ def GlobalTemperature():
   likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
   #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
   not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
-  datastore = downloader.DownloaderCopernicus(DATADIR)
-  unavailable_experiments = datastore.download(models['model'].values, experiments, 
-    skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+  datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
+  #unavailable_experiments = datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
   aggregate(var='tas')
   data = loadAggregated()
   data = data['tas']
@@ -191,13 +190,13 @@ def maxTemperature():
   #models = md['daily_models']
   models = list(md["all_models"])
 
-  datastore = downloader.DownloaderCopernicus(DATADIR)
+  datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, )
   unavailable_experiments = datastore.download(
     models[0:0], 
     ['historical', 'ssp245'], 
     variable='daily_maximum_near_surface_air_temperature', 
     frequency='daily', 
-    area=md['area']['cz'], mark_failing_scenarios=mark_failing_scenarios, skip_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+    area=md['area']['cz'], forecast_from=forecast_from)
   
   aggregate(var='tasmax')
   
@@ -230,13 +229,13 @@ def tropicDaysBuckets():
   
   models = list(md["all_models"])
 
-  datastore = downloader.DownloaderCopernicus(DATADIR)
+  datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
   unavailable_experiments = datastore.download(
     models[0:0], 
     ['historical', 'ssp245'], 
     variable='daily_maximum_near_surface_air_temperature', 
     frequency='daily', 
-    area=md['area']['cz'], mark_failing_scenarios=mark_failing_scenarios, skip_failing_scenarios=mark_failing_scenarios, forecast_from=forecast_from)
+    area=md['area']['cz'], forecast_from=forecast_from)
   
   aggregate(var='tasmax', stacked=True)
   
@@ -263,7 +262,9 @@ def discovery():
   #models = ["CIESM", "CMCC-CM2-SR5", "FGOALS-g3", "NorESM2-MM", "MPI-ESM-1-2-HAM", "INM-CM4-8", "TaiESM1", "HadGEM3-GC31-MM", "NorESM2-LM", "MIROC-ES2L", "CAS-ESM2-0", "BCC-CSM2-MR", "ACCESS-CM2", "NESM3", "E3SM-1-0", "INM-CM5-0", "KACE-1-0-G", "FGOALS-f3-L", "CNRM-ESM2-1", "MRI-ESM2-0", "CESM2-WACCM-FV2", "CanESM5", "MPI-ESM1-2-HR", "CNRM-CM6-1", "EC-Earth3", "IITM-ESM", "MIROC6", "GISS-E2-2-G", "EC-Earth3-Veg", "CESM2", "CNRM-CM6-1-HR", "SAM0-UNICON", "GISS-E2-1-H", "MPI-ESM1-2-L", "AWI-CM-1-1-MR", "MCM-UA-1-0", "GFDL-CM4", "ACCESS-ESM1-5", "HadGEM3-GC31-LL", "CAMS-CSM1-0", "UKESM1-0-LL", "MPI-ESM1-2-LR", "FIO-ESM-2-0", "NorCPM1", "CanESM5-CanOE", "GFDL-ESM4", "IPSL-CM6A-LR", "BCC-ESM1", "CESM2-WACCM"]
   #models = md['smaller_models4testing']
   
-  datastore = downloader.DownloaderCopernicus(DATADIR)
+  datastore = downloader.DownloaderCopernicus(DATADIR, 
+    skip_failing_scenarios=True, mark_failing_scenarios=True, 
+    fileformat='zip') #zip tgz netcdf grib
   unavailable_experiments = datastore.download(
     ['canesm5'], 
     ['ssp245'], 
@@ -272,9 +273,7 @@ def discovery():
     #area=md['area']['cz'],
     start=2020,
     forecast_from=2020,
-    end=2030,
-    skip_failing_scenarios=True, mark_failing_scenarios=True, 
-    fileformat='zip' #zip tgz netcdf grib
+    end=2030
     )
   aggregate(var='tas')
   data = loadAggregated()
@@ -330,7 +329,7 @@ def create_buckets(da_agg):
 
 
 K = 273.15 # Kelvins
-def geog_agg(filename, var='tas', buckets=None, area=None):
+def aggregate_file(filename, var='tas', buckets=None, area=None):
   try:
     ds = xr.open_dataset(f'{DATADIR}{filename}')
 
@@ -391,10 +390,8 @@ def geog_agg(filename, var='tas', buckets=None, area=None):
     #ds.attrs['height'] = ...
 
     # SAVE
-    #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
-    model, experiment, variant, grid, time = filename.split('_')[2:7]
-    da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{variant}_{grid}_{time}.nc')
-    #da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
+    model, experiment, run, grid, time = filename.split('_')[2:7] #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
+    da_yr.to_netcdf(path=os.path.join(DATADIR, f'agg_{var}_{model}_{experiment}_{run}_{grid}_{time}.nc'))  #da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
 
   #except OSError as e: print(f"\n{RED}Error loading model:{RESET} {type(e).__name__}: {e}")
   except Exception as e: print(f"\n{RED}Error aggregating {filename}:{RESET} {type(e).__name__}: {e}"); traceback.print_exc()
@@ -404,19 +401,19 @@ def aggregate(stacked=None, var='tas'):
   for i in glob(f'{DATADIR}{var}*.nc'):
       dataFiles.append(os.path.basename(i))
   for filename in dataFiles:
-    model, experiment, variant, grid, time = filename.split('_')[2:7]
+    model, experiment, run, grid, time = filename.split('_')[2:7]
     try:
-      candidate_files = [f for f in os.listdir(DATADIR) if f.startswith(f'cmip6_agg_{experiment}_{model}_{variant}_{grid}_{time}')] 
+      candidate_files = [f for f in os.listdir(DATADIR) if f.startswith(f'agg_{var}_{model}_{experiment}_{run}_{grid}_{time}')] 
       # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
       if reaggregate or not len(candidate_files):
         print('.', end='')
-        geog_agg(filename, var=var, buckets=stacked)
+        aggregate_file(filename, var=var, buckets=stacked)
 
     except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
   print()
 
 def loadAggregated(models=None, experiments=None, unavailable_experiments=None, wildcard=''):
-  filename_pattern = f'{DATADIR}cmip6_agg_*{wildcard}*.nc'
+  filename_pattern = f'{DATADIR}agg_*{wildcard}*.nc'
   filenames = glob(os.path.join(DATADIR, filename_pattern))
   modelex = {}
   for filename in filenames: 
@@ -427,7 +424,7 @@ def loadAggregated(models=None, experiments=None, unavailable_experiments=None, 
     if not key in modelex:
       modelex[key] = set()
     else:
-      print(f'{YELLOW}duplicate{RESET} {key}: {set(variant)|modelex[key]}')
+      print(f'{YELLOW}duplicate{RESET} {key}: {set([variant])|modelex[key]}')
 
     modelex[key] |= {variant}
 
@@ -525,18 +522,23 @@ def models_with_all_experiments(data, dont_count_historical=False, drop_experime
   if dont_count_historical:
     experiments = experiments - {'historical'} 
   
-  models_by_experiment = {experiment: data.sel(experiment=experiment).dropna(dim='model', how='all').model.values for experiment in experiments}
-  available = [models[1] for models in models_by_experiment.items()]
-  intersection = set(available[0]).intersection(*available[1:]) if available else []
+  models_by_experiment = {experiment: set(data.sel(experiment=experiment).dropna(dim='model', how='all').model.values.flat) for experiment in experiments}
+  models_available_by_experiment = [models[1] for models in models_by_experiment.items()]
+  
+  intersection = set.intersection(*models_available_by_experiment)
+  union = set.union(*models_available_by_experiment)
+
+  print(f'{len(intersection)}/{len(union)} models in all experiments')
 
   data = data.sel(model = data.model.isin(list(intersection)))
   data = data.dropna(dim='model', how='all')
   
   remained = set(data.model.values.flat)
+  print(f"\n{len(remained)} remained: {remained}") #: {' '.join(remained)}
 
-  print(f"\n{len(remained)} remained") #: {' '.join(remained)}
   for experiment in models_by_experiment.items():
-    print(f"{len(experiment[1])}⨉ {experiment[0]}, except: {sorted(set(experiment[1])-remained)}")
+    print(f"{len(experiment[1])}⨉ {experiment[0]}, except: {sorted(union-set(experiment[1]))}")
+    #print(experiment[1])
 
   return data
 
