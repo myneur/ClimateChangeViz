@@ -257,18 +257,16 @@ def tropicDaysBuckets(frequency='daily'):
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
     try:
         models = pd.read_csv('metadata/models.csv')
-        observed_max_by_station=[]
-        for file in glob('data/Czechia/*.xlsx'):
-            observations = pd.read_excel(file, sheet_name='teplota maximální', header=3) #https://www.chmi.cz/historicka-data/pocasi/denni-data/data-ze-stanic-site-RBCN#
-            tropic_count = observations.groupby('rok').max()
-            tropic_count = tropic_count.drop(columns=['měsíc'])
-            observed_max_by_station.append(tropic_count)
-        observed_max_by_month = pd.concat(observed_max_by_station).groupby(level=0).max()
-        observed_tropic_by_year = (observed_max_by_month > 30).sum(axis=1)
+        observed_max_by_station = [pd.read_excel(file, sheet_name='teplota maximální', header=3) for file in glob('data/Czechia/*.xlsx')]
+        observed_max_by_station = pd.concat(observed_max_by_station)
+        #observed_max_by_station = observed_max_by_station.rename(columns={'rok': 'Year'})
+        temperature_columns = observed_max_by_station.columns[2:]
 
-        
-        
-        
+        observed_maxes = observed_max_by_station.groupby(['rok', 'měsíc']).agg({col: 'max' for col in temperature_columns})
+        observed_maxes['tropic_days'] = (observed_maxes[temperature_columns] >= 30).sum(axis=1)
+        observed_tropic_days = observed_maxes.groupby('rok')['tropic_days'].sum()
+            
+        # TODO >=30 is also at least Sep        
 
         datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
         unavailable_experiments = datastore.download(
@@ -293,7 +291,7 @@ def tropicDaysBuckets(frequency='daily'):
         
         
         chart.stack(data)
-        chart.scatter(observed_tropic_by_year, label='Observed tropic days') # expects year as index
+        chart.scatter(observed_tropic_days, label='Observed tropic days') # expects year as index
         chart.show()
         chart.save()
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
