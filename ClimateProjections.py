@@ -63,8 +63,8 @@ DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/')
 def main():
   #return GlobalTemperature()
   #return maxTemperature(frequency='monthly')
-  return maxTemperature(frequency='daily')
-  #return tropicDaysBuckets(frequency='daily')
+  #return maxTemperature(frequency='daily')
+  return tropicDaysBuckets(frequency='daily')
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 # VISUALIZATIONS
@@ -257,17 +257,18 @@ def tropicDaysBuckets(frequency='daily'):
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
     try:
         models = pd.read_csv('metadata/models.csv')
-        observed_tropic_by_station=[]
+        observed_max_by_station=[]
         for file in glob('data/Czechia/*.xlsx'):
             observations = pd.read_excel(file, sheet_name='teplota maximální', header=3) #https://www.chmi.cz/historicka-data/pocasi/denni-data/data-ze-stanic-site-RBCN#
-            tropic_count = observations.iloc[:, :2].copy()
-            tropic_count['Tropic'] = (observations.iloc[:, 2:] > 30).sum(axis=1)
-            tropic_count = tropic_count.groupby('rok').sum()
-            tropic_count = tropic_count.rename(columns={'rok': 'Year'})
+            tropic_count = observations.groupby('rok').max()
             tropic_count = tropic_count.drop(columns=['měsíc'])
-            observed_tropic_by_station.append(tropic_count)
-        observed_tropic_by_station = pd.concat(observed_tropic_by_station)
-        observed_tropic_by_station = observed_tropic_by_station.groupby(observed_tropic_by_station.index)['Tropic'].max()
+            observed_max_by_station.append(tropic_count)
+        observed_max_by_month = pd.concat(observed_max_by_station).groupby(level=0).max()
+        observed_tropic_by_year = (observed_max_by_month > 30).sum(axis=1)
+
+        
+        
+        
 
         datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
         unavailable_experiments = datastore.download(
@@ -292,7 +293,7 @@ def tropicDaysBuckets(frequency='daily'):
         
         
         chart.stack(data)
-        chart.scatter(observed_tropic_by_station, label='Observed tropic days') # expects year as index
+        chart.scatter(observed_tropic_by_year, label='Observed tropic days') # expects year as index
         chart.show()
         chart.save()
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
