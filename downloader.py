@@ -1,5 +1,6 @@
 import util
 import os
+import json
 import fnmatch
 import glob
 import re
@@ -7,6 +8,7 @@ import requests
 import time
 import subprocess
 import ssl
+import OpenSSL
 from dotenv import load_dotenv
 import urllib3 
 urllib3.disable_warnings() # Disable warnings for data download via API
@@ -21,13 +23,67 @@ BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 RESET = "\033[0m"
 
-class DownloaderCopernicus:
-    def __init__(self, DATADIR, fileformat='zip', mark_failing_scenarios=False, skip_failing_scenarios=False):
+class Downloader:
+    def __init__(self, DATADIR, mark_failing_scenarios=False, skip_failing_scenarios=False, forecast_from=None, start=None, end=None, fileformat='zip'): 
         self.DATADIR = DATADIR
+        os.makedirs(DATADIR, exist_ok=True)
         self.fileformat=fileformat
         self.skip_failing_scenarios = skip_failing_scenarios
         self.mark_failing_scenarios = mark_failing_scenarios
         self.status = util.loadMD('status')
+    '''
+        if forecast_from or start or end:
+        if not start: start = 1850
+        if not end: end = 2100
+        if not forecast_from: forecast_from = 2015
+
+        self.forecast_from=forecast_from
+        self.start=start
+        self.end=end
+        '''
+
+    def list_files(self, pattern): 
+        return glob.glob(os.path.join(self.DATADIR, pattern))
+
+    '''
+    def download(models, experiments, variable='near_surface_air_temperature', frequency='monthly', area=None): 
+      unavailable_experiments = self.status['unavailable_experiments'][variable] if self.skip_failing_scenarios else {}
+
+      for experiment in experiments:
+          if forecast_from:
+              if experiment == 'historical':
+                  end = forecast_from-1      
+              else:
+                  start = forecast_from
+              date = f'{start}-01-01/{end}-12-31'
+
+          separator = '='*60
+          print(f'\n\nRequesting {variable} {frequency} {experiments} for {models} {start}-{end}\n{separator}\n')
+
+          for model in models:
+              if not self.skip_failing_scenarios or (experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment])):
+                  filename = os.path.join(self.DATADIR, f'cmip6_{frequency}_{start}-{end}_{experiment}_{model}.{fileformat}')
+                  raise NotImplementedError('TODO added {frequency} to download filename') # StopIteration InterruptedError FileNotFoundError'''
+
+    def get_certificate_issuer(self, url):
+        import socket
+        from urllib.parse import urlparse
+
+        if not url.startswith("http"): url = "https://"+ url
+        hostname = urlparse(url).hostname # import idna;hostname = idna.encode(hostname).decode()
+        conn = ssl.create_default_context().wrap_socket(socket.socket(socket.AF_INET), server_hostname=hostname)
+        conn.settimeout(3.0)
+
+        try:
+            conn.connect((hostname, 443))
+            cert = conn.getpeercert()
+        finally:
+            conn.close()
+        return(cert)
+
+class DownloaderCopernicus(Downloader):
+    def __init__(self, DATADIR, fileformat='zip', mark_failing_scenarios=False, skip_failing_scenarios=False):
+        super().__init__(DATADIR, fileformat=fileformat, mark_failing_scenarios=mark_failing_scenarios, skip_failing_scenarios=skip_failing_scenarios)
         import cdsapi
         self.c = cdsapi.Client() # Doc: https://cds.climate.copernicus.eu/toolbox/doc/how-to/1_how_to_retrieve_data/1_how_to_retrieve_data.html
 
@@ -35,6 +91,8 @@ class DownloaderCopernicus:
     def download(self, models, experiments, variable='near_surface_air_temperature', frequency='monthly', area=None, forecast_from=2015, start=1850, end=2100): 
 
         unavailable_experiments = self.status['unavailable_experiments'][variable] if self.skip_failing_scenarios else {}
+        print(f"\n\n{BLUE}{BOLD}Requesting {variable} {frequency} {models} {experiments} {start}-{end}\n{'='*60}\n{RESET}")
+
 
         for experiment in experiments:
             if experiment == 'historical':
@@ -43,41 +101,42 @@ class DownloaderCopernicus:
                 start = forecast_from
             date = f'{start}-01-01/{end}-12-31'
 
-            separator = '='*60
-            print(f'\n\nRequesting {variable} {frequency} {experiments} for {models} {start}-{end}\n{separator}\n')
-
             for model in models:
+                var = 'tasmax' if 'max' in variable else 'tas'
                 if not self.skip_failing_scenarios or (experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment])):
                     try:
-                        filename = os.path.join(self.DATADIR, f'cmip6_monthly_{start}-{end}_{experiment}_{model}.{self.fileformat}')
-                        if not os.path.isfile(filename):
+                        files = self.list_files(f'*{var}*_{model}_{experiment}*')
+                        filename = os.path.join(self.DATADIR, f'{var}_A{frequency[:3]}_{model}_{experiment}_{start}-{end}.{self.fileformat}')
+
+                        if not files:
                             params = {'format': self.fileformat,
-                              'temporal_resolution': frequency,
-                              'experiment': f'{experiment}',
-                              'level': 'single_levels',
-                              'variable': variable,
-                              'model': f'{model}',
-                              'date': date
-                              }
-                        if area: params['area'] = area
-                        if frequency == 'daily':
-                            params['month'] = ['06', '07', '08']
-                        
-                        print(f'REQUESTING: {experiment} from {model} for {date}')
-                        
-                        self.c.retrieve('projections-cmip6', params, filename)
-                        if self.fileformat == 'zip':
-                            util.unzip(filename, self.DATADIR)
+                                'temporal_resolution': frequency,
+                                'experiment': f'{experiment}',
+                                'level': 'single_levels',
+                                'variable': variable,
+                                'model': f'{model}',
+                                'date': date}
+                            if area: params['area'] = area
+                            if frequency == 'daily':
+                                params['month'] = ['06', '07', '08']
+                            
+                            print(f'{BLUE}REQUESTING: {model} {experiment} for {date}{RESET}')
+                            
+                            self.c.retrieve('projections-cmip6', params, filename)
+                            if self.fileformat == 'zip':
+                                util.unzip(filename, self.DATADIR)
+                                os.remove(os.path.join(self.DATADIR, filename))
+                            print(f'{GREEN}DOWNLOADED: {model} {experiment} {RESET}')
                         else:
-                            print(f'REUSING: {experiment} for {model}')
+                            print(f'{GREEN}REUSING: {model} {experiment} {RESET}')
                     except Exception as e:
-                        print(f'\nUNAVAILABLE experiment {experiment} for {model}')
-                        print(f"\nError:\n––––––\n{type(e).__name__}: {e}\n––––––\n")
+                        print(f'\n{RED}UNAVAILABLE {model} {experiment}{RESET}')
+                        print(f"\n{type(e).__name__}: {e}")
                         if not experiment in unavailable_experiments: 
                             unavailable_experiments[experiment] = []
                         unavailable_experiments[experiment].append(model)
                 else:
-                    print(f'SKIPPING UNAVAILABLE experiment {experiment} for {model}')
+                    print(f'{RED}SKIPPING UNAVAILABLE {model} {experiment}{RESET}')
 
         if unavailable_experiments:
             print(f"\nUNAVAILABLE:")
@@ -112,7 +171,7 @@ class DownloaderCopernicus:
                 print(data['experiments'])
                 print(data['date_ranges'])
 
-class DownloaderESGF:
+class DownloaderESGF(Downloader):
     servers = [
         'esgf-data.dkrz.de', 
         'esgf-node.llnl.gov', 
@@ -123,11 +182,11 @@ class DownloaderESGF:
         'esgf-node.ornl.gov', 
         'esgf-data04.diasjp.net'] 
 
-    def __init__(self, DATADIR, server=0, method='request'):
+    def __init__(self, DATADIR, server=0, method='request', fileformat='nc', mark_failing_scenarios=True, skip_failing_scenarios=True):
+        super().__init__(DATADIR, fileformat=fileformat, mark_failing_scenarios=mark_failing_scenarios, skip_failing_scenarios=skip_failing_scenarios)
+        
         from pyesgf.logon import LogonManager
         from pyesgf.search import SearchConnection
-
-        self.DATADIR = DATADIR
         load_dotenv(dotenv_path=os.path.expanduser('~/.esgfenv'))
         self.lm = LogonManager()
         self.current_server = server%len(self.servers)
@@ -136,7 +195,7 @@ class DownloaderESGF:
         if not self.lm.is_logged_on():
             self.login()
 
-        self.connection = SearchConnection(f'https://{DownloaderESGF.servers[self.current_server]}/esg-search', distrib=False)
+        self.connection = SearchConnection(f'{DownloaderESGF.servers[self.current_server]}/esg-search', distrib=False)
 
         # https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html
 
@@ -144,53 +203,58 @@ class DownloaderESGF:
         self.retry_delay = 10
 
     def login(self):
-      user = os.getenv('ESGF_OPENID')
-      print(f'Logging-in as {user}')
-      self.lm.logon_with_openid(openid=user, password=os.getenv('ESGF_PASSWORD'), bootstrap=False)
+        user = os.getenv('ESGF_OPENID')
+        print(f'Logging-in as {UNDERLINE}{user}{RESET}')
+        try:
+            self.lm.logon_with_openid(openid=user, password=os.getenv('ESGF_PASSWORD'), bootstrap=False)
+        except OpenSSL.SSL.Error as e:
+            issuer = self.get_certificate_issuer(user)['issuer']
+            print(f"{RED}Your python does not trust the certificate of the Data Service.\nCertificate Issuer: O:{issuer[1][0][1]} CN: {issuer[2][0][1]}{RESET}")
+            raise(e)
 
     def logoff(self):
-      self.lm.logoff()
+        self.lm.logoff()
 
 
     def download(self, models, experiments, variable='tas', frequency='mon'):
-      print(f"{BLUE}Downloading {BOLD}{models} {experiments}{RESET}")
-      existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
+        print(f"{BLUE}Downloading {BOLD}{models} {experiments}{RESET}")
+        existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
 
-      for model in models:
-          for experiment in experiments:
-              if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
-                  for attempt in range(self.max_tries):
-                      try:
-                          results = []
-                          results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon').results.search()
-                      except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                          if attempt < self.max_tries:
-                            print(f"Tmeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
-                            time.sleep(self.retry_delay)
-                          else:
-                            print(f'❌ download search failed {model} {experiment}: Timeout'); 
+        for model in models:
+            for experiment in experiments:
+                if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
+                    for attempt in range(self.max_tries):
+                        try:
+                            results = []
+                            results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon').results.search()
+                        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                            if attempt < self.max_tries:
+                              print(f"Tmeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
+                              time.sleep(self.retry_delay)
+                            else:
+                              print(f'❌ download search failed {model} {experiment}: Timeout'); 
+                              break
+                        except (requests.exceptions.RequestException, Exception) as e:
+                            print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
                             break
-                      except (requests.exceptions.RequestException, Exception) as e:
-                          print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
-                          break
-                    
-                  if(len(results)):
-                      print(f'Found {model} {experiment}: {len(results)}×')
                       
-                      results = sorted(results, key=self.splitByNums, reverse=True) # latest release at the top
-                      print(f'{BLUE}⬇{RESET} downloading {results[0].dataset_id}')
+                    if(len(results)):
+                        print(f'Found {model} {experiment}: {len(results)}×')
+                        
+                        results = sorted(results, key=self.splitByNums, reverse=True) # latest release at the top
+                        print(f'{BLUE}⬇{RESET} downloading {results[0].dataset_id}')
 
-                      if self.downloadMethod == 'request':
-                        for file in results[0].file_context().search():
-                          self.downloadUrl(file.download_url)
-                      else:
-                        self.downloadWget(results[0], model, experiment, variable)
-                      # 'number_of_files', 'las_url', 'urls', 'context',  'opendap_url', 'globus_url', 'gridftp_url', 'index_node', 'json', 
-                  else:
-                      print(f'❌ missing {model} {experiment}')
-              else:
-                  print(f'✅ exists {model} {experiment}')
-      return 
+                        if self.downloadMethod == 'request':
+                          for file in results[0].file_context().search():
+                            self.downloadUrl(file.download_url)
+                        else:
+                          self.downloadWget(results[0], model, experiment, variable)
+                        # 'number_of_files', 'las_url', 'urls', 'context',  'opendap_url', 'globus_url', 'gridftp_url', 'index_node', 'json', 
+                    else:
+                        print(f'❌ missing {model} {experiment}')
+                else:
+                    print(f'✅ exists {model} {experiment}')
+        return 
 
     def downloadRequest(self, url):
         filename = url.split('/')[-1]
@@ -274,44 +338,6 @@ class DownloaderESGF:
       return [int(part) if part.isdigit() else part for part in re.split('(\d+)', ds.dataset_id)]
 
 
-class Downloader:
-    def __init__(self, DATADIR, mark_failing_scenarios=False, skip_failing_scenarios=False, forecast_from=None, start=None, end=None, fileformat='zip'): 
-      self.DATADIR = DATADIR
-      self.mark_failing_scenarios=mark_failing_scenarios
-      self.skip_failing_scenarios=skip_failing_scenarios
-      self.fileformat=fileformat
-
-      if forecast_from or start or end:
-          if not start: start = 1850
-          if not end: end = 2100
-          if not forecast_from: forecast_from = 2015
-
-      self.forecast_from=forecast_from
-      self.start=start
-      self.end=end
-      
-
-      self.status = util.loadMD('status')
-
-    def download(models, experiments, variable='near_surface_air_temperature', frequency='monthly', area=None): 
-      unavailable_experiments = self.status['unavailable_experiments'][variable] if self.skip_failing_scenarios else {}
-
-      for experiment in experiments:
-          if forecast_from:
-              if experiment == 'historical':
-                  end = forecast_from-1      
-              else:
-                  start = forecast_from
-              date = f'{start}-01-01/{end}-12-31'
-
-          separator = '='*60
-          print(f'\n\nRequesting {variable} {frequency} {experiments} for {models} {start}-{end}\n{separator}\n')
-
-          for model in models:
-              if not self.skip_failing_scenarios or (experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment])):
-                  filename = os.path.join(self.DATADIR, f'cmip6_{frequency}_{start}-{end}_{experiment}_{model}.{fileformat}')
-                  raise NotImplementedError('TODO added {frequency} to download filename') # StopIteration InterruptedError FileNotFoundError
-
 def trusted_ca():
     import certifi
     trusted = []
@@ -321,24 +347,6 @@ def trusted_ca():
                 trusted.append(line.strip())
     return trusted
 
-def get_certificate_issuer(url):
-    import socket
-    from urllib.parse import urlparse
-
-    if not url.startswith("http"):
-        url = "https://"+ url
-
-    hostname = urlparse(url).hostname # import idna;hostname = idna.encode(hostname).decode()
-    conn = ssl.create_default_context().wrap_socket(socket.socket(socket.AF_INET), server_hostname=hostname)
-    conn.settimeout(3.0)
-
-    try:
-        conn.connect((hostname, 443))
-        cert = conn.getpeercert()
-    except Exception as e:
-        return f"An error occurred: {e}"
-    finally:
-        conn.close()
 
     return dict(x[0] for x in cert['issuer'])
 
@@ -355,11 +363,13 @@ def show_server_certification_issuers(url):
 def main():
     wanted = ['tas_Amon_CESM2-WACCM_ssp126_r1i1p1f1_gn_201501-206412.nc']
     # 'tas_Amon_CIESM_historical_r3i1p1f1_gr_185001-201412.nc'
-
-    #show_server_certification_issuers(DownloaderESGF.servers[0])
-    datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=1)
-    #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), skip_failing_scenarios=False)
-    results = datastore.download(['HadGEM3-GC31-MM', 'IPSL-CM5A2-INCA', 'KIOST-ESM'], ['ssp245'])
+    try:
+        #show_server_certification_issuers(DownloaderESGF.servers[0])
+        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=1)
+        #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/temperature/'), skip_failing_scenarios=False)
+        #results = datastore.download(['HadGEM3-GC31-MM', 'IPSL-CM5A2-INCA', 'KIOST-ESM'], ['ssp245'])
+        results = datastore.download(["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"], ['ssp119'])
+    except OpenSSL.SSL.Error: pass
 
 
 if __name__ == "__main__":
