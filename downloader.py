@@ -117,8 +117,7 @@ class DownloaderCopernicus(Downloader):
                                 'model': f'{model}',
                                 'date': date}
                             if area: params['area'] = area
-                            if frequency == 'daily':
-                                params['month'] = ['06', '07', '08']
+                            #if frequency == 'daily': params['month'] = ['O4', '05' '06', '07', '08', '09']
                             
                             print(f'{BLUE}REQUESTING: {model} {experiment} for {date}{RESET}')
                             
