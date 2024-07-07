@@ -63,8 +63,8 @@ DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/')
 def main():
   #return GlobalTemperature()
   #return maxTemperature(frequency='monthly')
-  return maxTemperature(frequency='daily')
-  #return tropicDaysBuckets(frequency='daily')
+  #return maxTemperature(frequency='daily')
+  return tropicDaysBuckets(frequency='daily')
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 # VISUALIZATIONS
@@ -256,34 +256,49 @@ def maxTemperature(frequency='daily'):
 
 def tropicDaysBuckets(frequency='daily'):
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
+    try:
+        models = pd.read_csv('metadata/models.csv')
+        observed_tropic_by_station=[]
+        for file in glob('data/Czechia/*.xlsx'):
+            observations = pd.read_excel(file, sheet_name='teplota maximální', header=3) #https://www.chmi.cz/historicka-data/pocasi/denni-data/data-ze-stanic-site-RBCN#
+            tropic_count = observations.iloc[:, :2].copy()
+            tropic_count['Tropic'] = (observations.iloc[:, 2:] > 30).sum(axis=1)
+            tropic_count = tropic_count.groupby('rok').sum()
+            tropic_count = tropic_count.rename(columns={'rok': 'Year'})
+            tropic_count = tropic_count.drop(columns=['měsíc'])
+            observed_tropic_by_station.append(tropic_count)
+        observed_tropic_by_station = pd.concat(observed_tropic_by_station)
+        observed_tropic_by_station = observed_tropic_by_station.groupby(observed_tropic_by_station.index)['Tropic'].max()
 
-    models = pd.read_csv('metadata/models.csv')
+        datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
+        unavailable_experiments = datastore.download(
+          models.values[0:0], ['historical', 'ssp245'], variable='daily_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
+          frequency=frequency)
+      
+        aggregate(var='tasmax', stacked=True) 
+        data = loadAggregated('_tasmaxbuckets_')
+        data = cleanUpData(data)
+        #data = normalize(data)
 
-    datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
-    unavailable_experiments = datastore.download(
-      models.values[0:0], ['historical', 'ssp245'], variable='daily_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
-      frequency=frequency)
-  
-    aggregate(var='tasmax', stacked=True) 
-    data = loadAggregated('_tasmaxbuckets_')
-    data = cleanUpData(data)
-    data = normalize(data)
+        data = models_with_all_experiments(data, dont_count_historical=True)
 
-    data = models_with_all_experiments(data, dont_count_historical=True)
+        model_count = len(set(data.model.values.flat))
+        models = data.model.values.flat
+        data = data.median(dim='model').max(dim='experiment')      
 
-    model_count = len(set(data.model.values.flat))
-    models = data.model.values.flat
-    data = data.median(dim='model').max(dim='experiment')      
-
-    chart = visualizations.Charter(variable=variable, models=models,
-        title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
-        subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
-        ylabel='Tropic days annualy',
-        marker=forecast_from)
-    
-    chart.stack(data)
-    chart.show()
-    chart.save()
+        chart = visualizations.Charter(variable=variable, models=models,
+            title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
+            subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
+            ylabel='Tropic days annualy',
+            marker=forecast_from)
+        
+        
+        chart.stack(data)
+        chart.scatter(observed_tropic_by_station, label='Observed tropic days') # expects year as index
+        chart.show()
+        chart.save()
+    except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
+    except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc()
 
 def discovery():
   variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
