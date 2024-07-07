@@ -63,8 +63,8 @@ DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/')
 def main():
   #return GlobalTemperature()
   #return maxTemperature(frequency='monthly')
-  #return maxTemperature(frequency='daily')
-  return tropicDaysBuckets(frequency='daily')
+  return maxTemperature(frequency='daily')
+  #return tropicDaysBuckets(frequency='daily')
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 # VISUALIZATIONS
@@ -194,10 +194,9 @@ def maxTemperature(frequency='daily'):
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
     try:
         models = pd.read_csv('metadata/models.csv')
-        #file = 'data/Czechia/P1PRUZ01.xlsx'
         observed_max_t=[]
         for file in glob('data/Czechia/*.xlsx'):
-            observations = pd.read_excel(file, sheet_name='teplota maximální', header=3) #https://www.chmi.cz/historicka-data/pocasi/denni-data/data-ze-stanic-site-RBCN#
+            observations = pd.read_excel(file, sheet_name='teplota maximální', header=3)
             max_t = observations.iloc[:, :2].copy()
             max_t['Max'] = observations.iloc[:, 2:].max(axis=1)
             max_t = max_t.groupby('rok').max()
@@ -214,7 +213,7 @@ def maxTemperature(frequency='daily'):
           frequency=frequency)
 
         aggregate(var='tasmax')
-        data = loadAggregated('_tasmax_')
+        data = loadAggregated(wildcard='tasmax_')
         data = cleanUpData(data)
         #data = models_with_all_experiments(data, dont_count_historical=True)
         
@@ -228,7 +227,7 @@ def maxTemperature(frequency='daily'):
         #print(data)
         #print(quantile_ranges[0])
 
-        model_set = set(data.model.values.flat)
+        model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
         chart = visualizations.Charter(variable=variable,
           title=f'Maximal temperature (in Czechia) projections ({len(model_set)} CMIP6 models)', 
@@ -272,22 +271,21 @@ def tropicDaysBuckets(frequency='daily'):
 
         datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
         unavailable_experiments = datastore.download(
-          models.values[0:0], ['historical', 'ssp245'], variable='daily_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
+          models.values[0:0], ['historical', 'ssp245'], variable=f'{frequency}_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
           frequency=frequency)
       
         aggregate(var='tasmax', stacked=True) 
-        data = loadAggregated('_tasmaxbuckets_')
+        data = loadAggregated(wildcard='tasmaxbuckets_')
         data = cleanUpData(data)
         #data = normalize(data)
 
         data = models_with_all_experiments(data, dont_count_historical=True)
+        model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
-        model_count = len(set(data.model.values.flat))
-        models = data.model.values.flat
         data = data.median(dim='model').max(dim='experiment')      
 
-        chart = visualizations.Charter(variable=variable, models=models,
-            title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
+        chart = visualizations.Charter(variable=variable, models=model_set,
+            title=f'Tropic days (in Czechia) projection ({len(model_set)} CMIP6 models)', 
             subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
             ylabel='Tropic days annualy',
             marker=forecast_from)
@@ -453,8 +451,9 @@ def aggregate(stacked=None, var='tas'):
     print()
 
 def loadAggregated(models=None, experiments=None, unavailable_experiments=None, wildcard=''):
-    filename_pattern = f'{DATADIR}agg_*{wildcard}*.nc'
-    filenames = glob(os.path.join(DATADIR, filename_pattern))
+    filename_pattern = os.path.join(DATADIR, f'agg_*{wildcard}*.nc')
+    
+    filenames = glob(filename_pattern)
     duplicites = {}
     for filename in filenames: 
         filename = filename.split('/')[-1]
