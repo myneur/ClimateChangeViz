@@ -24,7 +24,6 @@ def saveMD(md, where):
 
 
 def unzip(filename, DATADIR):
-  print(f"UNZIPPPING {filename} {DATADIR}")
   with zipfile.ZipFile(filename, 'r') as zip_ref:
     zip_ref.extractall(DATADIR)
 

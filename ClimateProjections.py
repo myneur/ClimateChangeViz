@@ -61,9 +61,10 @@ YELLOW = '\033[33m'
 DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/')
 
 def main():
-  return GlobalTemperature()
-  #return maxTemperature()
-  #return tropicDaysBuckets()
+  #return GlobalTemperature()
+  #return maxTemperature(frequency='monthly')
+  return maxTemperature(frequency='daily')
+  #return tropicDaysBuckets(frequency='daily')
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 # VISUALIZATIONS
@@ -71,76 +72,81 @@ def main():
 experiments = list(scenarios['to-visualize'].keys())
 
 def GlobalTemperature():
-  variable = 'temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
-  
-  models = pd.read_csv('metadata/models.csv')
+    variable = 'temperature'; 
+    global DATADIR; DATADIR = os.path.join(DATADIR, variable, '')
+    try:
+        models = pd.read_csv('metadata/models.csv')
 
-  not_hot_models = models[models['tcr'] <= 2.2]
-  likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
-  #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
-  not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
-  datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
-  #unavailable_experiments = datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
-  aggregate(var='tas')
-  data = loadAggregated()
-  data = data['tas']
-  data = cleanUpData(data)
+        not_hot_models = models[models['tcr'] <= 2.2]
+        likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
+        #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
+        not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
+        datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
+        #unavailable_experiments = datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
+        m=["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"]
+        unavailable_experiments = datastore.download(m, ['ssp119'], forecast_from=forecast_from)
+        aggregate(var='tas')
+        data = loadAggregated()
+        data = data['tas']
+        data = cleanUpData(data)
 
-  data = normalize(data)
-  
-  data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
-  #data = models_with_all_experiments(data, dont_count_historical=True)
-  
-  quantile_ranges = quantiles(data, (.1, .5, .9))
-  model_set = set(data.model.values.flat)
+        data = normalize(data)
+        
+        #data = models_with_all_experiments(data, drop_experiments=['ssp119'], dont_count_historical=True)
+        data = models_with_all_experiments(data, dont_count_historical=True)
+        
+        quantile_ranges = quantiles(data, (.1, .5, .9))
+        model_set = set(data.model.values.flat)
 
-  observed_t = load_observed_temperature()
+        observed_t = load_observed_temperature()
 
-  preindustrial_t = preindustrial_temp(quantile_ranges[1])
+        preindustrial_t = preindustrial_temp(quantile_ranges[1])
 
-  chart = visualizations.Charter(variable=variable, 
-    title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
-    zero=preindustrial_t, ylimit=[-1,4], reference_lines=[0, 2]
-    )
+        chart = visualizations.Charter(variable=variable, 
+            title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
+            zero=preindustrial_t, ylimit=[-1,4], reference_lines=[0, 2]
+            )
 
-  chart.scatter(observed_t + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
-
-
-  chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
-  chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
-
-  not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
-  #chart.plot(quantiles(not_hot_data, [.5]), alpha=.6)
-
-  likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
-  #chart.plot(quantiles(likely_data, [.5]), alpha=.3)
-
-  not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
-  #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
-
-  m1 = models[models['model'].isin(model_set)]
-  print(f"+{m1['tcr'].mean():.2f}° ⌀2100: ALL {len(m1)}× ")
-  m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
-  print(f"+{m2['tcr'].mean():.2f}° ⌀2100: NOT HOT TCR {len(m2)}× ")
-  m3 = models[models['model'].isin(likely_data.model.values.flat)]
-  print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
-  m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
-  print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
-
-  #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
-  #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
-  #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
-  #chart.rightContext([final_t_likely, final_t_all])
-
-  # 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
+        chart.scatter(observed_t + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
 
 
-  chart.show()
-  chart.save()
-  
-  classify_models(data, models, likely_data, likely_models, preindustrial_t)
-  
-  return data
+        chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
+        chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
+
+        not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
+        #chart.plot(quantiles(not_hot_data, [.5]), alpha=.6)
+
+        likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
+        #chart.plot(quantiles(likely_data, [.5]), alpha=.3)
+
+        not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
+        #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
+
+        m1 = models[models['model'].isin(model_set)]
+        print(f"+{m1['tcr'].mean():.2f}° ⌀2100: ALL {len(m1)}× ")
+        m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
+        print(f"+{m2['tcr'].mean():.2f}° ⌀2100: NOT HOT TCR {len(m2)}× ")
+        m3 = models[models['model'].isin(likely_data.model.values.flat)]
+        print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
+        m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
+        print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
+
+        #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+        #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+        #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
+        #chart.rightContext([final_t_likely, final_t_all])
+
+        # 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
+
+
+        chart.show()
+        chart.save()
+        
+        classify_models(data, models, likely_data, likely_models, preindustrial_t)
+        
+        return data
+    except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
+    except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=1)
 
 
 def classify_models(data, models, likely_data, likely_models, preindustrial_t):
@@ -165,7 +171,7 @@ def classify_models(data, models, likely_data, likely_models, preindustrial_t):
       linewidth=1.3
     else:
       linewidth=.5
-    chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=1, color=color, linewidth=linewidth)
+    chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=.4, color=color, linewidth=linewidth)
   
   chart.show()
   chart.save()
@@ -184,78 +190,100 @@ def classify_models(data, models, likely_data, likely_models, preindustrial_t):
       pass #print(f'missing {model}')
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
-def maxTemperature():
-  variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
+def maxTemperature(frequency='daily'):
+    variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
+    try:
+        models = pd.read_csv('metadata/models.csv')
+        #file = 'data/Czechia/P1PRUZ01.xlsx'
+        observed_max_t=[]
+        for file in glob('data/Czechia/*.xlsx'):
+            observations = pd.read_excel(file, sheet_name='teplota maximální', header=3) #https://www.chmi.cz/historicka-data/pocasi/denni-data/data-ze-stanic-site-RBCN#
+            max_t = observations.iloc[:, :2].copy()
+            max_t['Max'] = observations.iloc[:, 2:].max(axis=1)
+            max_t = max_t.groupby('rok').max()
+            max_t = max_t.rename(columns={'rok': 'Year'})
+            max_t = max_t.drop(columns=['měsíc'])
+            observed_max_t.append(max_t)
+        observed_max_t = pd.concat(observed_max_t)
+        observed_max_t = observed_max_t.groupby(observed_max_t.index)['Max'].max()
+
+
+        datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
+        unavailable_experiments = datastore.download(
+          models['model'].values, ['historical', 'ssp245'], variable='daily_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
+          frequency=frequency)
+
+        aggregate(var='tasmax')
+        data = loadAggregated('_tasmax_')
+        data = cleanUpData(data)
+        #data = models_with_all_experiments(data, dont_count_historical=True)
+        
+        data = data['tasmax']
+
+        #data = normalize(data)
+        
+        quantile_ranges = quantiles(data, (.1, .5, .9))
+        maxes = {'Madrid': 35}
+
+        #print(data)
+        #print(quantile_ranges[0])
+
+        model_set = set(data.model.values.flat)
+
+        chart = visualizations.Charter(variable=variable,
+          title=f'Maximal temperature (in Czechia) projections ({len(model_set)} CMIP6 models)', 
+          ylabel='Max Temperature (°C)', yformat=lambda x, pos: f'{x:.0f} °C',
+          reference_lines=[preindustrial_temp(quantile_ranges[1]),40]
+          )
+
+        chart.scatter(observed_max_t, label='measurements') # expects year as index
+        
+        chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges='quantile', labels=scenarios['to-visualize'], models=model_set)
+        chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
+
+        chart.show()
+        chart.save()
+
+
+        chart = visualizations.Charter(title=f'Maximum temperature projections ({len(model_set)} CMIP6 models)')
+        for model in model_set:
+          chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=.4, linewidth=.5)
+        chart.show()
+        chart.save()
+
+    except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
+    except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc()
+
+def tropicDaysBuckets(frequency='daily'):
+    variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
+
+    models = pd.read_csv('metadata/models.csv')
+
+    datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
+    unavailable_experiments = datastore.download(
+      models.values[0:0], ['historical', 'ssp245'], variable='daily_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
+      frequency=frequency)
   
-  #models = md['daily_models']
-  models = list(md["all_models"])
+    aggregate(var='tasmax', stacked=True) 
+    data = loadAggregated('_tasmaxbuckets_')
+    data = cleanUpData(data)
+    data = normalize(data)
 
-  datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios, )
-  unavailable_experiments = datastore.download(
-    models[0:0], 
-    ['historical', 'ssp245'], 
-    variable='daily_maximum_near_surface_air_temperature', 
-    frequency='daily', 
-    area=md['area']['cz'], forecast_from=forecast_from)
-  
-  aggregate(var='tasmax')
-  
-  data = cleanUpData(loadAggregated())
-  data = models_with_all_experiments(data, dont_count_historical=True)
+    data = models_with_all_experiments(data, dont_count_historical=True)
 
-  data = data['tasmax']
-  quantile_ranges = quantiles(data, (.1, .5, .9))
-  maxes = {'Madrid': 35}
+    model_count = len(set(data.model.values.flat))
+    models = data.model.values.flat
+    data = data.median(dim='model').max(dim='experiment')      
 
-  #print(data)
-  #print(quantile_ranges[0])
-
-  model_set = set(data.model.values.flat)
-
-  chart = visualizations.Charter(variable=variable,
-    title=f'Maximal temperature (in Czechia) projections ({len(model_set)} CMIP6 models)', 
-    ylabel='Max Temperature (°C)',
-    reference_lines=[preindustrial_temp(quantile_ranges[1]),40]
-    )
-  
-  chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges='quantile', labels=scenarios['to-visualize'], models=model_set)
-  chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
-
-  chart.show()
-  chart.save()
-
-def tropicDaysBuckets():
-  variable = 'max_temperature'; global DATADIR; DATADIR = DATADIR + variable + '/'
-  
-  models = list(md["all_models"])
-
-  datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=mark_failing_scenarios, mark_failing_scenarios=mark_failing_scenarios)
-  unavailable_experiments = datastore.download(
-    models[0:0], 
-    ['historical', 'ssp245'], 
-    variable='daily_maximum_near_surface_air_temperature', 
-    frequency='daily', 
-    area=md['area']['cz'], forecast_from=forecast_from)
-  
-  aggregate(var='tasmax', stacked=True)
-  
-  data = cleanUpData(loadAggregated())
-
-  data = models_with_all_experiments(data, dont_count_historical=True)
-
-  model_count = len(set(data.model.values.flat))
-  models = data.model.values.flat
-  data = data.median(dim='model').max(dim='experiment')      
-
-  chart = visualizations.Charter(variable=variable, models=models,
-    title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
-    subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
-    ylabel='Tropic days annualy',
-    marker=forecast_from)
+    chart = visualizations.Charter(variable=variable, models=models,
+        title=f'Tropic days (in Czechia) projection ({model_count} CMIP6 models)', 
+        subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
+        ylabel='Tropic days annualy',
+        marker=forecast_from)
     
-  chart.stack(data)
-  chart.show()
-  chart.save()
+    chart.stack(data)
+    chart.show()
+    chart.save()
 
 def discovery():
   variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
@@ -265,28 +293,23 @@ def discovery():
   datastore = downloader.DownloaderCopernicus(DATADIR, 
     skip_failing_scenarios=True, mark_failing_scenarios=True, 
     fileformat='zip') #zip tgz netcdf grib
-  unavailable_experiments = datastore.download(
-    ['canesm5'], 
-    ['ssp245'], 
-    variable='surface_temperature', frequency='monthly',
-    #variable='daily_maximum_near_surface_air_temperature', frequency='daily',
-    #area=md['area']['cz'],
-    start=2020,
-    forecast_from=2020,
-    end=2030
-    )
+  #unavailable_experiments = datastore.download(
+  #  ['canesm5'], ['ssp245'], 
+  #  variable='surface_temperature', frequency='monthly', #variable='daily_maximum_near_surface_air_temperature', frequency='daily',#area=md['area']['cz'],
+  #  start=2020,forecast_from=2020,end=2030)
   aggregate(var='tas')
   data = loadAggregated()
+  #data=data.sel(experiment='ssp126')
+  print(data)
   
   chart = visualizations.Charter(variable=variable)
   #chart.plot(data, what={'experiment': None})
   
-  #data = data['tas']
+  data = data['tas']
   #quantile_ranges = quantiles(data, (.1, .5, .9))
-  chart.plot([data])
+  #chart.plot([data])
   
-  #chart.plotDiscovery(data, what={'experiment':'ssp245'})
-  #chart.plot(data, what={'experiment':'historical'})
+  chart.plotDiscovery(data, what={'experiment':'ssp245'})
   chart.show()
   return data
 
@@ -330,117 +353,115 @@ def create_buckets(da_agg):
 
 K = 273.15 # Kelvins
 def aggregate_file(filename, var='tas', buckets=None, area=None):
-  try:
-    ds = xr.open_dataset(f'{DATADIR}{filename}')
+    var_aggregated = var if not buckets else var+'buckets'
+    try:
+        ds = xr.open_dataset(f'{DATADIR}{filename}')
 
-    exp = ds.attrs['experiment_id']
-    mod = ds.attrs['source_id']
+        exp = ds.attrs['experiment_id']
+        mod = ds.attrs['source_id']
 
-    # Fixing inconsistent naming
-    if 'lat' in ds.coords: lat, lon = 'lat', 'lon' 
-    else: lat, lon = 'latitude', 'longitude'
-    
-    # Narrow to selected variable
-    
-    da = ds[var] 
-    if 'height' in da.coords:
-      da = da.drop_vars('height')
+        # Fixing inconsistent naming
+        if 'lat' in ds.coords: lat, lon = 'lat', 'lon' 
+        else: lat, lon = 'latitude', 'longitude'
+        
+        # Narrow to selected variable
+        
+        da = ds[var] 
+        if 'height' in da.coords:
+            da = da.drop_vars('height')
 
-    # filter within area
-    if area: 
-      if len(area)>3:
-        da.sel({lat: slice(area[0], area[2]), lon: slice(area[1], area[3])})# N-S # W-E
-      else:
-        da.sel({lat: lat_value, lon: lon_value}, method='nearest')
-    
-    # AGGREGATE SPATIALLY
-    
-    # MAX
-    if var == 'tasmax':
-      da_agg = da.max([lat, lon])
-    
-    # AVG
-    else:
-      # Weight as longitude gird shrinks with latitude
-      weights = np.cos(np.deg2rad(da[lat]))
-      weights.name = "weights"
-      da_weighted = da.weighted(weights)
-      da_agg = da_weighted.mean([lat, lon])
+        # filter within area
+        if area: 
+            if len(area)>3:
+                da.sel({lat: slice(area[0], area[2]), lon: slice(area[1], area[3])})# N-S # W-E
+            else:
+                da.sel({lat: lat_value, lon: lon_value}, method='nearest')
+        
+        # AGGREGATE SPATIALLY
+        
+        # MAX
+        if var == 'tasmax':
+            da_agg = da.max([lat, lon])
+        
+        # AVG
+        else:
+            # Weight as longitude gird shrinks with latitude
+            weights = np.cos(np.deg2rad(da[lat]))
+            weights.name = "weights"
+            da_weighted = da.weighted(weights)
+            da_agg = da_weighted.mean([lat, lon])
 
-    # AGGREGATE TIME
+        # AGGREGATE TIME
 
-    if buckets:
-      da_yr = create_buckets(da_agg)
-    else:
-      # MAX
-      if var == 'tasmax':
-        da_yr = da_agg.groupby('time.year').max()
+        if buckets:
+            da_yr = create_buckets(da_agg)
+        else:
+            # MAX
+            if 'max' in var:
+                da_yr = da_agg.groupby('time.year').max()
 
-      # AVG
-      else: 
-        da_yr = da_agg.groupby('time.year').mean()
+            # AVG
+            else: 
+                da_yr = da_agg.groupby('time.year').mean()
 
-      da_yr = da_yr - K # °C
-    
-    # CONTEXT
-    da_yr = da_yr.assign_coords(model=mod)
-    da_yr = da_yr.expand_dims('model')
-    da_yr = da_yr.assign_coords(experiment=exp)
-    da_yr = da_yr.expand_dims('experiment')
-    #ds.attrs['height'] = ...
+            da_yr = da_yr - K # °C
+        
+        # CONTEXT
+        da_yr = da_yr.assign_coords(model=mod)
+        da_yr = da_yr.expand_dims('model')
+        da_yr = da_yr.assign_coords(experiment=exp)
+        da_yr = da_yr.expand_dims('experiment')
+        #ds.attrs['height'] = ...
 
-    # SAVE
-    model, experiment, run, grid, time = filename.split('_')[2:7] #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
-    da_yr.to_netcdf(path=os.path.join(DATADIR, f'agg_{var}_{model}_{experiment}_{run}_{grid}_{time}.nc'))  #da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
+        # SAVE
+        model, experiment, run, grid, time = filename.split('_')[2:7] #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
+        da_yr.to_netcdf(path=os.path.join(DATADIR, f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}.nc'))  #da_yr.to_netcdf(path=f'{DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
 
-  #except OSError as e: print(f"\n{RED}Error loading model:{RESET} {type(e).__name__}: {e}")
-  except Exception as e: print(f"\n{RED}Error aggregating {filename}:{RESET} {type(e).__name__}: {e}"); traceback.print_exc()
+    #except OSError as e: print(f"\n{RED}Error loading model:{RESET} {type(e).__name__}: {e}")
+    except Exception as e: print(f"\n{RED}Error aggregating {filename}:{RESET} {type(e).__name__}: {e}"); traceback.print_exc()
 
 def aggregate(stacked=None, var='tas'):
-  dataFiles = list()
-  for i in glob(f'{DATADIR}{var}*.nc'):
-      dataFiles.append(os.path.basename(i))
-  for filename in dataFiles:
-    model, experiment, run, grid, time = filename.split('_')[2:7]
-    try:
-      candidate_files = [f for f in os.listdir(DATADIR) if f.startswith(f'agg_{var}_{model}_{experiment}_{run}_{grid}_{time}')] 
-      # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
-      if reaggregate or not len(candidate_files):
-        print('.', end='')
-        aggregate_file(filename, var=var, buckets=stacked)
+    dataFiles = list()
+    var_aggregated = var if not stacked else var+'buckets'
+    for i in glob(f'{DATADIR}{var}*.nc'):
+        dataFiles.append(os.path.basename(i))
+    for filename in dataFiles:
+      model, experiment, run, grid, time = filename.split('_')[2:7]
+      try:
+          candidate_files = [f for f in os.listdir(DATADIR) if f.startswith(f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}')] 
+          # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
+          if reaggregate or not len(candidate_files):
+              print('.', end='')
+              aggregate_file(filename, var=var, buckets=stacked)
 
-    except Exception as e: print(f"Error in {filename}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
-  print()
+      except Exception as e: print(f"{RED}Error in {filename}: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=1)
+    print()
 
 def loadAggregated(models=None, experiments=None, unavailable_experiments=None, wildcard=''):
-  filename_pattern = f'{DATADIR}agg_*{wildcard}*.nc'
-  filenames = glob(os.path.join(DATADIR, filename_pattern))
-  modelex = {}
-  for filename in filenames: 
-    filename = filename.split('/')[-1]
-    
-    model, experiment, variant, grid, time = filename.split('_')[2:7]
-    key = f'{model}_{experiment}_{time}'
-    if not key in modelex:
-      modelex[key] = set()
-    else:
-      print(f'{YELLOW}duplicate{RESET} {key}: {set([variant])|modelex[key]}')
+    filename_pattern = f'{DATADIR}agg_*{wildcard}*.nc'
+    filenames = glob(os.path.join(DATADIR, filename_pattern))
+    duplicites = {}
+    for filename in filenames: 
+        filename = filename.split('/')[-1]
+        
+        var, model, experiment, variant, grid, time = filename.split('_')[1:7]
+        key = f'{var}_{model}_{experiment}_{time}'
+        if not key in duplicites:
+            duplicites[key] = set()
+        else:
+            print(f'{YELLOW}duplicate{RESET} {key}: {set([variant])|duplicites[key]}')
 
-    modelex[key] |= {variant}
+        duplicites[key] |= {variant}
 
-  print('Opening aggregations')
-  try:
+    print('Opening aggregations')
     data_ds = None
     data_ds = xr.open_mfdataset(filename_pattern, combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{DATADIR}cmip6_agg_*.nc')
     data_ds.load()
 
+
     return data_ds
 
-    
-
-    
-  
-    for i in glob(filename_pattern):
+    '''for i in glob(filename_pattern):
         filename = os.path.abspath(i) # os.path.basename(i)
         print(filename)
         new_ds = xr.open_dataset(filename)
@@ -451,17 +472,14 @@ def loadAggregated(models=None, experiments=None, unavailable_experiments=None, 
             #data_ds = xr.combine_nested([data_ds, new_ds], concat_dim=['experiment', 'model', 'bins', 'year'], combine_attrs='override')
             data_ds = xr.combine_nested([data_ds, new_ds], concat_dim=['model'])
 
-  except Exception as e: 
-    print(f"Error: {type(e).__name__}: {e}"); 
-    traceback.print_exc(limit=1)
 
-  not_read = set(models)-set(data_ds.model.values.flat) if data_ds else print("Nothing read at all")
-  if not_read: print("\nNOT read: '" + ' '.join(map(str, not_read)) +"'")
+    not_read = set(models)-set(data_ds.model.values.flat) if data_ds else print("Nothing read at all")
+    if not_read: print("\nNOT read: '" + ' '.join(map(str, not_read)) +"'")
 
-  #print(len(set(data_ds.sel(experiment='ssp126').model.values.flat)))
-  #print(sorted(set(data_ds.sel(experiment='ssp126').model.values.flat)))
+    #print(len(set(data_ds.sel(experiment='ssp126').model.values.flat)))
+    #print(sorted(set(data_ds.sel(experiment='ssp126').model.values.flat)))
 
-  return data_ds
+    return data_ds'''
 
 def cleanUpData(data):
   # removing historical data before 2014, because some models can include them despite request
@@ -471,7 +489,9 @@ def cleanUpData(data):
         ds = ds.sel(year=ds['year'] < forecast_from)
       return ds
     data = data.groupby('experiment').map(filter_years) #, squeeze=True
-    '''
+    
+    ''' # CHECK FOR MISSING YEARS
+    raise(NotImplementedError)
     for model in data.model.values.flat:
       for experiment in data.experiment.values.flat:
         year_range = np.arange(1850, 2101)
@@ -489,29 +509,34 @@ def cleanUpData(data):
     # merging data series of different periods for the same model
     #models = data.model.values
     #if len(models) > len(set(models)):
+
     data = data.groupby('model').mean('model')
+  except Exception as e: 
+    print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); 
+    traceback.print_exc(limit=1)  
+    print(data)
 
-    return data
-
-  except Exception as e: print(f"Error: {type(e).__name__}: {e}"); traceback.print_exc()  
+  return data
 
 def normalize(data):
-  
-  model_mean = data.sel(experiment='historical').sel(year=slice(forecast_from-20, forecast_from-1)).mean(dim='year')
+    try:
+      model_mean = data.sel(experiment='historical').sel(year=slice(forecast_from-20, forecast_from-1)).mean(dim='year')
 
-  global_mean = model_mean.mean(dim='model').item()
+      global_mean = model_mean.mean(dim='model').item()
 
-  normalization_offset = model_mean - global_mean
-  normalization_offset_expanded = normalization_offset.expand_dims(dim={'year': data.year}).transpose('model', 'year')
+      normalization_offset = model_mean - global_mean
+      normalization_offset_expanded = normalization_offset.expand_dims(dim={'year': data.year}).transpose('model', 'year')
 
-  normalized_data = data - normalization_offset_expanded
+      data = data - normalization_offset_expanded
 
-  #print(f"NORMALIZED {normalized_data.sel(experiment='ssp126', model=normalized_data.model.values.flat[0], year=slice(2014,2015))}")
+      #print(f"NORMALIZED {normalized_data.sel(experiment='ssp126', model=normalized_data.model.values.flat[0], year=slice(2014,2015))}")
 
-  return normalized_data
+    except Exception as e: 
+        print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); 
+        traceback.print_exc()
+        print(data)
 
-
-  #raise(NotImplementedError)
+    return data
 
 def models_with_all_experiments(data, dont_count_historical=False, drop_experiments=None):
 

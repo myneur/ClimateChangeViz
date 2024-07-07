@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 import numpy as np
+import pandas as pd
 
 import datetime
 import bisect
@@ -12,7 +13,7 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable=None, models=[], title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, ylimit=None, marker=None):
+  def __init__(self, variable='', models=[], title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, ylimit=None, yformat=None, marker=None):
     self.variable = variable
     self.models = set(models)
     self.format = format
@@ -35,9 +36,8 @@ class Charter:
       self.zero(zero)
     else:
       self._zero = 0
-      if self.variable == 'max_temperature':
-        #ax.set_ylim([34, 40])
-        self.ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.0f} °C'))
+    if yformat:
+      self.ax.yaxis.set_major_formatter(FuncFormatter(yformat))
 
     if ylimit: self.ylimit(ylimit)
 
@@ -66,9 +66,9 @@ class Charter:
 
   def show(self):
     # CONTEXT
-    context = "models: " + ' '.join(map(str, self.models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
-    plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
-    print(context)
+    #context = "models: " + ' '.join(map(str, self.models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
+    #plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
+    #print(context)
     plt.show()
 
   def save(self):
@@ -117,7 +117,13 @@ class Charter:
 
   def scatter(self, data, label=None):
     ax = self.ax
-    ax.scatter(data.index.tolist(), data.iloc[:, 0], marker='o', color='black', s=7, label=label)
+    if isinstance(data, pd.DataFrame):
+      y = data.iloc[:, 0]
+    else: 
+      y = data
+    ax.scatter(data.index.tolist(), 
+      y, marker='o', color='black', s=7, 
+      label=label)
     ax.legend(frameon=False)
 
   def plot(self, data, labels=None, models=[], ranges=False, alpha=None, color=None, series='experiment', dimensions=None, linewidth=1.8):
@@ -127,7 +133,7 @@ class Charter:
 
       self.models = self.models | set(models)
 
-      # TODO refactor so it's all in one xarray
+      # TODO refactor so it's all in one xarray isinstance(variable, (xr.DataArray, xr.Dataset)) # list
       years = data[0].year
       series = data[0][series].values
       
@@ -166,59 +172,43 @@ class Charter:
     colors = self.palette['series']
     try:
       self.models = set(data.model.values.flat)
+
+      years = data.coords['year'].values
+      legend = data.model.values
+
+      if len(self.models)<len(data.model.values):
+        data = data.groupby('model').mean()
       
+      dimension = list(what.keys())[0]
+      if dimension:
+        data = data.where(data[dimension] == what[dimension], drop=True)
 
-      # DATA
-      if what == 'mean':
-        series = data.experiment.values
-        legend = [labels[s] for s in series] if labels else series
-        for i in np.arange(len(series)):
+
+      for i, model in enumerate(data.coords['model'].values):
+        try:
+          model_data = data.sel(model=model, drop=True)
+
+          # making it robust to inconsistencies in the data
           try:
-            alpha=0.03 if legend[i] == 'hindcast' else 0.07
-            for line in ranges[1:-1]:
-              ax.plot(
-                data.year, 
-                line[i,:], 
-                color=f'{colors[i%len(colors)]}', label=f'{legend[i]}', linewidth=1.8)
-            ax.fill_between(data.year, ranges[0][i,:], ranges[-1][i,:], alpha=alpha, color=f'{colors[i]}')
-          except Exception as e: print(f"Error in {legend[i]}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
-      else:
-        years = data.coords['year'].values
-        legend = data.model.values
+            model_data = model_data[list(data.data_vars)[0] ].squeeze()
+          except: pass
+          model_data = model_data.dropna(dim='year') 
+          aligned_years = model_data.coords['year'].values  
 
-        if len(self.models)<len(data.model.values):
-          data = data.groupby('model').mean()
-        
-        dimension = list(what.keys())[0]
-        if dimension:
-          data = data.where(data[dimension] == what[dimension], drop=True)
+          #assert len(aligned_years) == len(data.values), "Mismatch in the dimensions of years and the selected data"
+          ax.plot(aligned_years, model_data.values, color=f'{colors[i % len(colors)]}', label=model, linewidth=1.8)
 
+          # TODO make it robust for multile models with the same name
 
-        for i, model in enumerate(data.coords['model'].values):
-          try:
-            model_data = data.sel(model=model, drop=True)
-
-            # making it robust to inconsistencies in the data
-            try:
-              model_data = model_data[list(data.data_vars)[0] ].squeeze()
-            except: pass
-            model_data = model_data.dropna(dim='year') 
-            aligned_years = model_data.coords['year'].values  
-
-            #assert len(aligned_years) == len(data.values), "Mismatch in the dimensions of years and the selected data"
-            ax.plot(aligned_years, model_data.values, color=f'{colors[i % len(colors)]}', label=model, linewidth=1.8)
-
-            # TODO make it robust for multile models with the same name
-
-          except Exception as e: 
-            if len(model_data.values)==0:
-              print(f'No data for {what[dimension]} in {model}'); traceback.print_exc(limit=1)
-            else:
-              print(f"Error in {model}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
-              print(f"Shapes, x: {model_data.values.shape}, y: {aligned_years.shape}")
-              print("Do shapes match? If not, select the variable to show.")
-              #for dim in model_data.dims: print(f"  {dim}: {model_data.values.shape}")
-              #print(model_data)
+        except Exception as e: 
+          if len(model_data.values)==0:
+            print(f'No data for {what[dimension]} in {model}'); traceback.print_exc(limit=1)
+          else:
+            print(f"Error in {model}: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+            print(f"Shapes, x: {model_data.values.shape}, y: {aligned_years.shape}")
+            print("Do shapes match? If not, select the variable to show.")
+            #for dim in model_data.dims: print(f"  {dim}: {model_data.values.shape}")
+            #print(model_data)
 
       handles, labels = ax.get_legend_handles_labels()
       ax.legend(handles, labels, loc='upper left', frameon=False)
