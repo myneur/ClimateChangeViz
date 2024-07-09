@@ -194,12 +194,13 @@ class DownloaderESGF(Downloader):
         if not self.lm.is_logged_on():
             self.login()
 
-        self.connection = SearchConnection(f'https://{DownloaderESGF.servers[self.current_server]}/esg-search', distrib=False)
+        self.connection = SearchConnection(f'https://{DownloaderESGF.servers[self.current_server]}/esg-search', distrib=True)
 
         # https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html
 
         self.max_tries = 5
         self.retry_delay = 10
+        #os.environ['ESGF_PYCLIENT_NO_FACETS_STAR_WARNING'] = '1'
 
     def login(self):
         user = os.getenv('ESGF_OPENID')
@@ -218,15 +219,18 @@ class DownloaderESGF(Downloader):
     def download(self, models, experiments, variable='tas', frequency='mon'):
         print(f"{BLUE}Downloading {BOLD}{models} {experiments}{RESET}")
         existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
-
         for model in models:
             for experiment in experiments:
                 if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
                     for attempt in range(self.max_tries):
                         try:
+                            print(f'Try {attempt} {model} {experiment}', end='\r')
                             results = []
-                            results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon')
-                            results = results.search()
+                            facets='variant_label,version,data_node'
+                            context = self.connection.new_context(facets=facets, project='CMIP6', source_id=model, experiment_id=experiment, variable='tas', frequency='mon')
+                            [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
+                            results = context.search()
+                            break
                         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                             if attempt < self.max_tries:
                               print(f"Timeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
@@ -240,13 +244,18 @@ class DownloaderESGF(Downloader):
                       
                     if(len(results)):
                         print(f'Found {model} {experiment}: {len(results)}×')
-                        
-                        results = sorted(results, key=self.splitByNums, reverse=True) # latest release at the top
+
                         print(f'{BLUE}⬇{RESET} downloading {results[0].dataset_id}')
 
                         if self.downloadMethod == 'request':
-                          for file in results[0].file_context().search():
-                            self.downloadUrl(file.download_url)
+                            context = results[0].file_context()
+                            #context.facet 'data_node' 'index_node' 'data_specs_version' 'nominal_resolution'
+                            [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items() if counts]
+                            
+                            for file in context.search(facets='variant_label,version,data_node'):
+                                #for facet, counts, in context.facet_counts.items():print(f'facet :{facet}');for value, count in counts.items():print(f'{value}: {count}')
+                                #'context', 'download_url', 'file_id', 'filename', 'index_node', 'json',  'size', 'tracking_id', 'urls'
+                                self.downloadUrl(file.download_url)
                         else:
                           self.downloadWget(results[0], model, experiment, variable)
                         # 'number_of_files', 'las_url', 'urls', 'context',  'opendap_url', 'globus_url', 'gridftp_url', 'index_node', 'json', 
@@ -272,7 +281,7 @@ class DownloaderESGF(Downloader):
                     if progress%(100*chunk) == 0:
                         #print('.', end='')
                         if size > 0:
-                          print(f"Downloaded: {int(chunk*100/size)}%", end='\r')
+                          print(f"Downloaded: {int(progress/size)}%", end='\r')
 
             print(f'✅ Downloaded {filename}')
             return True
@@ -365,13 +374,12 @@ def main():
     # 'tas_Amon_CIESM_historical_r3i1p1f1_gr_185001-201412.nc'
     try:
         #show_server_certification_issuers(DownloaderESGF.servers[0])
-        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=4)
+        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=0)
         #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/temperature/'), skip_failing_scenarios=False)
         #results = datastore.download(['HadGEM3-GC31-MM', 'IPSL-CM5A2-INCA', 'KIOST-ESM'], ['ssp245'])
-        results = datastore.download(["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"][:1], ['ssp226'])
+        results = datastore.download(["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"][5:6], ['ssp126'])
     except OpenSSL.SSL.Error: pass
 
 
 if __name__ == "__main__":
     main()
-
