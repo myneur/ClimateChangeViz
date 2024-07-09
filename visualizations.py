@@ -13,7 +13,7 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable='', models=[], title=None, subtitle=None, ylabel=None, format='png', size=None, zero=None, reference_lines=None, ylimit=None, yformat=None, marker=None):
+  def __init__(self, variable='', models=[], title=None, subtitle=None, ylabel=None, format='svg', size=None, zero=0, reference_lines=None, ylimit=None, yticks=None, yformat=None, marker=None):
     self.variable = variable
     self.models = set(models)
     self.format = format
@@ -32,10 +32,10 @@ class Charter:
       'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
       'series': ["#777777", '#3DB5AF','#61A3D2','#EE7F00', '#E34D21', 'black']}
 
-    if zero: 
-      self.zero(zero)
-    else:
-      self._zero = 0
+    
+
+    self.zero(zero)
+    if yticks: self.yticks(yticks)
     if yformat:
       self.ax.yaxis.set_major_formatter(FuncFormatter(yformat))
 
@@ -44,13 +44,15 @@ class Charter:
     if reference_lines: self.reference_lines(reference_lines)
     self._xaxis_climatic(self.ax)
 
+  def yticks(self, yticks):
+    plt.gca().set_yticks([val + self._zero for val in yticks])
+    self._yticks = yticks
 
   def zero(self, zero):
     self._zero = zero
     if not (np.isnan(zero) and not np.isinf(zero)):
-      yticks = [0, 1.5, 2, 3]
-      plt.gca().set_yticks([val + zero for val in yticks])
-      plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in yticks])
+      self.yticks([0, 1.5, 2, 3])
+      plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in self._yticks])
 
   def ylimit(self, y):
     self._ylimit = y

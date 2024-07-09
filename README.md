@@ -9,10 +9,10 @@ Let's visualize the latest knowledge of all CMIP6 models and their variability.
 ## Global temperature projections
 
 ### Models covering most scenarios
-![Global temperature projections (CMIP6 models)](charts/latest_most_complete.png)
+![Global temperature projections (CMIP6 models)](charts/latest_most_complete.svg)
 
 ### Models covering 1.5 °C scenario (ssp119)
-![Global temperature projections (CMIP6 models)](charts/latest_ssp119.png)
+![Global temperature projections (CMIP6 models)](charts/latest_ssp119.svg)
 
 ### Context
 Averages by the 50th quantile. Ranges by the 10-90th quantile. Normalized to last last 20 years of measurements. 
@@ -21,7 +21,7 @@ Averages by the 50th quantile. Ranges by the 10-90th quantile. Normalized to las
 ## Maximum temperature projections
 
 ### Maximum temperature in Czechia
-![Local temperature max projections (CMIP6 models)](charts/latest_max.png)
+![Local temperature max projections (CMIP6 models)](charts/latest_max.svg)
 
 ### Tropic days annualy in Czechia
 ![Local tropic days in the summer months with max temperatures over 30 °C projections (CMIP6 models)](charts/latest_tropic.png)
@@ -68,7 +68,7 @@ The scenarios visualized:
 
 1. Reaching worldwide carbon neutrality around 2050 => projected 1.5° global warming – probably out of our reach (ssp119)
 2. Carbon neutrality around 2075 => projected 2° global warming – will we make it? (ssp126)
-3. No decline of emissions until half of millenia => projected 3° global warming (ssp245)
+3. No decline of emissions until 2050 => projected 3° global warming (ssp245)
 4. Double emissions in 2100 => projected 4° global warming (ssp570)
 
 
