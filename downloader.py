@@ -194,7 +194,7 @@ class DownloaderESGF(Downloader):
         if not self.lm.is_logged_on():
             self.login()
 
-        self.connection = SearchConnection(f'{DownloaderESGF.servers[self.current_server]}/esg-search', distrib=False)
+        self.connection = SearchConnection(f'https://{DownloaderESGF.servers[self.current_server]}/esg-search', distrib=False)
 
         # https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html
 
@@ -225,10 +225,11 @@ class DownloaderESGF(Downloader):
                     for attempt in range(self.max_tries):
                         try:
                             results = []
-                            results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon').results.search()
+                            results = self.connection.new_context(source_id=model, experiment_id=experiment, variable='tas', frequency='mon')
+                            results = results.search()
                         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                             if attempt < self.max_tries:
-                              print(f"Tmeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
+                              print(f"Timeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
                               time.sleep(self.retry_delay)
                             else:
                               print(f'❌ download search failed {model} {experiment}: Timeout'); 
@@ -364,10 +365,10 @@ def main():
     # 'tas_Amon_CIESM_historical_r3i1p1f1_gr_185001-201412.nc'
     try:
         #show_server_certification_issuers(DownloaderESGF.servers[0])
-        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=1)
+        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=4)
         #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/temperature/'), skip_failing_scenarios=False)
         #results = datastore.download(['HadGEM3-GC31-MM', 'IPSL-CM5A2-INCA', 'KIOST-ESM'], ['ssp245'])
-        results = datastore.download(["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"], ['ssp119'])
+        results = datastore.download(["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"][:1], ['ssp226'])
     except OpenSSL.SSL.Error: pass
 
 
