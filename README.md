@@ -30,7 +30,7 @@ Averages by the 50th quantile. Ranges by the 10-90th quantile. Normalized to las
 
 Maximum temperatures from the summer months: June-August.
 
-This is an early discovery. The max temperature aggregation is yet to be reviewed and compared with measurements. 
+This is an early discovery. The max temperature aggregation is yet to be reviewed. 
 
 ## Where are the projections from?
 
@@ -75,7 +75,7 @@ The scenarios visualized:
 # How to run it
 1. install python libraries in `requirements.txt`
 2. Register on Data Store: 
-    1. a. Copernicus (https://cds.climate.copernicus.eu/):
+    1. Copernicus (https://cds.climate.copernicus.eu/):
     	- get an API key in your user profile
     	- put your API key to `~/.cdsapirc` as [in this format](https://cds.climate.copernicus.eu/api-how-to)
     2. ESGF:
@@ -94,6 +94,6 @@ Tested only on python3.
 Downloading is tricky, because not all models are available on all servers.
 
 - DownloaderCopernicus is easier to start with, but more models are missing there. 
-- DownloaderESGF has more models, but can be hard to tame. It might be necessary to add trusted certificates in the computer and try multiple servers and download method (`method='request'|'wget', server=0-7`).
+- DownloaderESGF has more models, but can be hard to tame. It might be necessary to add trusted certificates in the computer or toggle following methods (`method='request'|'wget'`).
 
 
