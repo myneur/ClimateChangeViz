@@ -98,7 +98,7 @@ class Charter:
       colors = plt.cm.hot(range(len(bins)))
       for i, bin_label in enumerate(bins):
           bin_values = data.sel(bins=bin_label).values
-          ax.bar(years, bin_values, label=f'{bin_label} °C', bottom=bottom, color=palette[i], width=1)
+          ax.bar(years, bin_values, label=f'{bin_label} °C', bottom=bottom, color=palette[i], width=1.1)
           bottom += bin_values
 
       handles, labels = ax.get_legend_handles_labels()

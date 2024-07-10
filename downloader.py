@@ -219,6 +219,7 @@ class DownloaderESGF(Downloader):
     def download(self, models, experiments, variable='tas', frequency='mon'):
         print(f"{BLUE}Downloading {BOLD}{models} {experiments}{RESET}")
         existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
+        downloaded = False
         for model in models:
             for experiment in experiments:
                 if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
@@ -231,7 +232,7 @@ class DownloaderESGF(Downloader):
                             [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
                             results = context.search()
                             break
-                        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                        except requests.exceptions.Timeout as e:
                             if attempt < self.max_tries:
                               print(f"Timeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
                               time.sleep(self.retry_delay)
@@ -247,23 +248,54 @@ class DownloaderESGF(Downloader):
 
                         print(f'{BLUE}⬇{RESET} downloading {results[0].dataset_id}')
 
-                        if self.downloadMethod == 'request':
-                            context = results[0].file_context()
-                            #context.facet 'data_node' 'index_node' 'data_specs_version' 'nominal_resolution'
-                            [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items() if counts]
-                            
-                            for file in context.search(facets='variant_label,version,data_node'):
-                                #for facet, counts, in context.facet_counts.items():print(f'facet :{facet}');for value, count in counts.items():print(f'{value}: {count}')
-                                #'context', 'download_url', 'file_id', 'filename', 'index_node', 'json',  'size', 'tracking_id', 'urls'
-                                self.downloadUrl(file.download_url)
-                        else:
-                          self.downloadWget(results[0], model, experiment, variable)
+                        #results = sorted(results, key=self.splitByNums, reverse=True) 
+
+                        for result in results:
+                            # print(r.urls['THREDDS'][0][0].split('/')[2])
+                            #print(dir(r.context)) #'connection', 'constrain', 'facet_constraints', 'facet_counts', 'facets', 'fields', 'freetext_constraint', 'geospatial_constraint', 'get_download_script', 'get_facet_options', 'hit_count', 'latest', 'replica', 'search', 'search_type', 'shards', 'temporal_constraint', 'timestamp_range'
+                            #print(r.json)
+                            print(f"{UNDERLINE}{result.dataset_id.split('|')[1]}{RESET} {result.number_of_files} files")
+
+                        #[print(f'{UNDERLINE}{node}{RESET}: {counts} facets') for node, counts in context.facet_counts['data_node'].items()]
+
+                        #result = results[0]
+
+                        #for result in results: # TODO pick just one variant per server
+                        if results[0]:
+                            result = results[0]
+                            server = result.dataset_id.split('|')[1]
+                            try:
+                                if self.downloadMethod == 'request':
+                                    context = result.file_context()
+                                    #context.facet 'data_node' 'index_node' 'data_specs_version' 'nominal_resolution'
+                                    [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items() if counts]
+                                    
+                                    for file in context.search(facets='variant_label,version,data_node'):
+                                        #for facet, counts, in context.facet_counts.items():print(f'facet :{facet}');for value, count in counts.items():print(f'{value}: {count}')
+                                        #'context', 'download_url', 'file_id', 'filename', 'index_node', 'json',  'size', 'tracking_id', 'urls'
+                                        downloaded = self.downloadUrl(file.download_url)
+                                    
+                                    if downloaded:
+                                        break
+                                else:
+                                  if self.downloadWget(result, model, experiment, variable): 
+                                    downloaded = True
+                                    break
+                            #TODO when we group by server, we should switch server here #except requests.exceptions.ConnectionError as e: print(f"❌ server {server} Timeout: {type(e).__name__}: {e}")
+                                #ConnectionError: HTTPConnectionPool(host='{data_node}', port=80): Max retries exceeded with url: /thredds/fileServer/{filepathname} (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at {object}>: Failed to establish a new connection: [Errno 60] Operation timed out'))
+                                
+                            except (requests.exceptions.TooManyRedirects, requests.exceptions.RequestException, Exception) as e:
+
+                                print(f"❌ server {server} failed: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+
                         # 'number_of_files', 'las_url', 'urls', 'context',  'opendap_url', 'globus_url', 'gridftp_url', 'index_node', 'json', 
                     else:
                         print(f'❌ missing {model} {experiment}')
                 else:
                     print(f'✅ exists {model} {experiment}')
-        return 
+                    return True
+            print(f"{'✅ Downloaded' if downloaded else '❌ Download failed'} {model} {experiment}")
+        return downloaded
 
     def downloadRequest(self, url):
         filename = url.split('/')[-1]
@@ -282,60 +314,47 @@ class DownloaderESGF(Downloader):
                         #print('.', end='')
                         if size > 0:
                           print(f"Downloaded: {int(progress/size)}%", end='\r')
-
-            print(f'✅ Downloaded {filename}')
             return True
-        else:
-            print(f'❌ Download failed {filename}:\nError code: {response.status_code}')
-            return False
+        return False
 
     def downloadUrl(self, url):
         print(f'{BLUE}⬇{RESET} downloading {url}')
         for attempt in range(self.max_tries):
             try:
-                self.downloadRequest(url)
-                break
+                return self.downloadRequest(url)
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 if attempt < self.max_tries:
-                    print(f"Tmeout. Retrying download in {self.retry_delay} s:\n{type(e).__name__}: {e}")
+                    print(f"Timeout. Retrying download in {self.retry_delay} s:\n{type(e).__name__}: {e}")
                     time.sleep(self.retry_delay)
                     self.downloadUrl(url)
                 else:
-                    print(f'❌ download failed: Timeout')
-                    break
-            except (requests.exceptions.TooManyRedirects, requests.exceptions.RequestException) as e:
-                print(f'❌ download failed: {type(e).__name__}: {e}'); traceback.print_exc()
-                break
-                #raise SystemExit(e)
+                    print(f'❌ max retries')
+                    return False
+
+        return False
 
     def downloadWget(self, ds, model, experiment, variable):
-      fc = ds.file_context()
-      wget_script_content = fc.get_download_script()
-      script_path = os.path.join(self.DATADIR, "download-{}.sh".format(os.getpid()))
-      #file_handle, script_path = tempfile.mkstemp(suffix='.sh', prefix='download-')
-      try:
-          with open(script_path, "w") as writer:
-              writer.write(wget_script_content)
+        fc = ds.file_context()
+        wget_script_content = fc.get_download_script()
+        script_path = os.path.join(self.DATADIR, "download-{}.sh".format(os.getpid()))
+        #file_handle, script_path = tempfile.mkstemp(suffix='.sh', prefix='download-')
+        with open(script_path, "w") as writer:
+            writer.write(wget_script_content)
 
-          os.chmod(script_path, 0o750)
-          download_dir = os.path.dirname(script_path)
-          subprocess.check_output("{}".format(script_path), cwd=download_dir)
-          
-          files = self.list_files(f'{variable}*{model}*{experiment}*.nc')
-          if files:
-              removed = 0
-              for file in files:
-                  if os.path.getsize(file) == 0:
-                      removed += 1
-                      os.remove(file)
-              if removed: 
-                  print(f'❌ download failed {model} {experiment}')
-              else:
-                  print(f'✅ Downloaded {model} {experiment}')
-          else:
-              print(f'❌ download failed {model} {experiment}')
-      except Exception as e: 
-          print(f"❌ download failed {model} {experiment}: {type(e).__name__}: {e}")#; traceback.print_exc(limit=1)
+        os.chmod(script_path, 0o750)
+        download_dir = os.path.dirname(script_path)
+        subprocess.check_output("{}".format(script_path), cwd=download_dir)
+        
+        files = self.list_files(f'{variable}*{model}*{experiment}*.nc')
+        if files:
+            removed = 0
+            for file in files:
+                if os.path.getsize(file) == 0:
+                    removed += 1
+                    os.remove(file)
+            if not removed: 
+                return True
+        return False
 
     def list_files(self, pattern):
       return glob.glob(os.path.join(self.DATADIR, pattern))
@@ -376,8 +395,8 @@ def main():
         #show_server_certification_issuers(DownloaderESGF.servers[0])
         datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request', server=0)
         #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/temperature/'), skip_failing_scenarios=False)
-        #results = datastore.download(['HadGEM3-GC31-MM', 'IPSL-CM5A2-INCA', 'KIOST-ESM'], ['ssp245'])
-        results = datastore.download(["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg","EC-Earth3-Veg-LR","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"][5:6], ['ssp126'])
+        models = ["CAMS-CSM1-0","CNRM-ESM2-1","CanESM5","CanESM5-1","EC-Earth3","EC-Earth3-Veg-LR","EC-Earth3-Veg","FGOALS-g3","GFDL-ESM4","GISS-E2-1-G","GISS-E2-1-H","IPSL-CM6A-LR","MIROC-ES2H","MIROC-ES2L","MIROC6","MPI-ESM1-2-LR","MRI-ESM2-0","UKESM1-0-LL"]
+        results = datastore.download(models[5:6], ['ssp126'])
     except OpenSSL.SSL.Error: pass
 
 

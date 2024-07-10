@@ -22,12 +22,6 @@ scenarios = { # CO2 emissions scenarios charted on https://www.carbonbrief.org/c
   }
 forecast_from = 2015 # Forecasts are actually from 2014. Hindcast untill 2018 or 2019?
 
-datastore = None# = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=True, mark_failing_scenarios=True)
-#mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
-
-# DOWNLOAD LOCATION (most models have hundreds MB globally)
-# a subfolder according to variable is expected
-
 from glob import glob
 from pathlib import Path
 import os
@@ -58,14 +52,17 @@ YELLOW = '\033[33m'
 
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
-DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/')
+DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
+datastore = None
+datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=True, mark_failing_scenarios=True)
+#mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
 
 def main():
-  #return GlobalTemperature()
+  #GlobalTemperature()
   #GlobalTemperature(drop_experiments=['ssp119'])
   #return maxTemperature(frequency='monthly')
-  maxTemperature(frequency='daily')
-  #tropicDaysBuckets()
+  #maxTemperature(frequency='daily')
+  tropicDaysBuckets()
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 # VISUALIZATIONS
@@ -82,23 +79,24 @@ def GlobalTemperature(drop_experiments=None):
         likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
         #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
         not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
+        
         if datastore:
-            unavailable_experiments = datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
+            datastore.DATADIR = DATADIR
+            datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
+        
         aggregate(var='tas')
         data = loadAggregated()
+        
         data = data['tas']
         data = cleanUpData(data)
-
         data = normalize(data)
-        
         data = models_with_all_experiments(data, drop_experiments=drop_experiments, dont_count_historical=True)
         
         quantile_ranges = quantiles(data, (.1, .5, .9))
-        model_set = set(data.model.values.flat)
-
+        preindustrial_t = preindustrial_temp(quantile_ranges[1])
         observed_t = load_observed_temperature()
 
-        preindustrial_t = preindustrial_temp(quantile_ranges[1])
+        model_set = set(data.model.values.flat)
 
         chart = visualizations.Charter(variable=variable, 
             title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
@@ -192,6 +190,7 @@ def maxTemperature(frequency='daily'):
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
     try:
         models = pd.read_csv('metadata/models.csv')
+
         observed_max_t=[]
         for file in glob('data/Czechia/*.xlsx'):
             observations = pd.read_excel(file, sheet_name='teplota maximální', header=3)
@@ -206,24 +205,20 @@ def maxTemperature(frequency='daily'):
 
 
         if datastore:
-            unavailable_experiments = datastore.download(
-          models['model'].values, ['ssp245', 'historical'], variable='daily_maximum_near_surface_air_temperature', area=md['area']['cz'], forecast_from=forecast_from,
-          frequency=frequency)
+            datastore.DATADIR = DATADIR
+            datastore.download(models['model'].values, ['ssp245', 'historical'], variable='tasmax', forecast_from=forecast_from, frequency=frequency,
+                area=md['area']['cz'])    
 
         aggregate(var='tasmax')
         data = loadAggregated(wildcard='tasmax_')
+
         data = cleanUpData(data)
         #data = models_with_all_experiments(data, dont_count_historical=True)
-        
         data = data['tasmax']
-
         #data = normalize(data)
         
         quantile_ranges = quantiles(data, (.1, .5, .9))
         maxes = {'Madrid': 35}
-
-        #print(data)
-        #print(quantile_ranges[0])
 
         model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
@@ -256,6 +251,7 @@ def tropicDaysBuckets():
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+'daily', '')
     try:
         models = pd.read_csv('metadata/models.csv')
+
         max_by_place = [pd.read_excel(file, sheet_name='teplota maximální', header=3) for file in glob('data/Czechia/*.xlsx')]
         max_by_place = pd.concat(max_by_place)
         max_by_place = max_by_place.rename(columns={'rok': 'Year', 'měsíc': 'Month'})
@@ -266,17 +262,17 @@ def tropicDaysBuckets():
         observed_tropic_days_annually = max_daily.groupby('Year')['tropic_days'].sum()
             
         if datastore:
-            unavailable_experiments = datastore.download(
-          models['model'].values, ['ssp245', 'historical'], variable='tasmax',#variable=f'daily_maximum_near_surface_air_temperature', 
-          area=md['area']['cz'], forecast_from=forecast_from,
-          frequency='daily')
+            datastore.DATADIR = DATADIR
+            datastore.download(models['model'].values, ['ssp245', 'historical'], variable='tasmax', forecast_from=forecast_from,frequency='daily', #variable=f'daily_maximum_near_surface_air_temperature', 
+                area=md['area']['cz'])
       
         aggregate(var='tasmax', stacked=True) 
         data = loadAggregated(wildcard='tasmaxbuckets_')
+
         data = cleanUpData(data)
         #data = normalize(data)
-
         data = models_with_all_experiments(data, dont_count_historical=True)
+
         model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
         data = data.median(dim='model').max(dim='experiment')      
@@ -286,7 +282,6 @@ def tropicDaysBuckets():
             subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
             ylabel='Tropic days annually',
             marker=forecast_from)
-        
         
         chart.stack(data)
         chart.scatter(observed_tropic_days_annually, label='Observed 30+ °C') # expects year as index
@@ -318,16 +313,16 @@ def tropic_months(observed_maxes, threshold=30):
 
 def discovery():
     variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
-    #models = ["CIESM", "CMCC-CM2-SR5", "FGOALS-g3", "NorESM2-MM", "MPI-ESM-1-2-HAM", "INM-CM4-8", "TaiESM1", "HadGEM3-GC31-MM", "NorESM2-LM", "MIROC-ES2L", "CAS-ESM2-0", "BCC-CSM2-MR", "ACCESS-CM2", "NESM3", "E3SM-1-0", "INM-CM5-0", "KACE-1-0-G", "FGOALS-f3-L", "CNRM-ESM2-1", "MRI-ESM2-0", "CESM2-WACCM-FV2", "CanESM5", "MPI-ESM1-2-HR", "CNRM-CM6-1", "EC-Earth3", "IITM-ESM", "MIROC6", "GISS-E2-2-G", "EC-Earth3-Veg", "CESM2", "CNRM-CM6-1-HR", "SAM0-UNICON", "GISS-E2-1-H", "MPI-ESM1-2-L", "AWI-CM-1-1-MR", "MCM-UA-1-0", "GFDL-CM4", "ACCESS-ESM1-5", "HadGEM3-GC31-LL", "CAMS-CSM1-0", "UKESM1-0-LL", "MPI-ESM1-2-LR", "FIO-ESM-2-0", "NorCPM1", "CanESM5-CanOE", "GFDL-ESM4", "IPSL-CM6A-LR", "BCC-ESM1", "CESM2-WACCM"]
-    #models = md['smaller_models4testing']
 
     datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=False, mark_failing_scenarios=True)
-    unavailable_experiments = datastore.download(
+    datastore.download(
       ['canesm5'], ['ssp245'], 
       variable='surface_temperature', frequency='monthly', #variable='daily_maximum_near_surface_air_temperature', frequency='daily',#area=md['area']['cz'],
       start=2020,forecast_from=2020,end=2030)
+    
     aggregate(var='tas')
     data = loadAggregated()
+    
     #data=data.sel(experiment='ssp126')
     print(data)
 
