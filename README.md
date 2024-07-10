@@ -78,12 +78,11 @@ The scenarios visualized:
     1. Copernicus (https://cds.climate.copernicus.eu/):
     	- get an API key in your user profile
     	- put your API key to `~/.cdsapirc` as [in this format](https://cds.climate.copernicus.eu/api-how-to)
-    2. ESGF:
-    	- get our Open Id in your user profile
-    	- put `ESGF_OPENID=***` & `ESGF_PASSWORD=***` to `~/.esgfenv`
+    2. ESGF (https://esgf.github.io/nodes.html) – any node:
+    	- put the open-id you'll get after the registration to `ESGF_OPENID=***` & `ESGF_PASSWORD=***` lines into `~/.esgfenv`
 4. change `DATADIR` to the folder point where to download model data
 	- Toggle DownloaderCopernicus/DownloaderESGF to get missing models on either of them
-5. Run `python ClimateProjections.py`
+5. Run `python3 ClimateProjections.py`
 	- Un/comment visualization to be made in `main()` function
 	- Update `model` `experiment` when needed
 
