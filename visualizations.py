@@ -13,9 +13,7 @@ import bisect
 import traceback
 
 class Charter:        
-  def __init__(self, variable='', models=[], title=None, subtitle=None, ylabel=None, format='svg', size=None, zero=0, reference_lines=None, ylimit=None, yticks=None, yformat=None, marker=None):
-    self.variable = variable
-    self.models = set(models)
+  def __init__(self, title=None, subtitle=None, ylabel=None, format='svg', size=None, zero=0, reference_lines=None, ylimit=None, yticks=None, yformat=None, marker=None):
     self.format = format
     self.size = size
     self.marker = marker
@@ -45,14 +43,10 @@ class Charter:
     self._xaxis_climatic(self.ax)
 
   def yticks(self, yticks):
-    plt.gca().set_yticks([val + self._zero for val in yticks])
+    plt.gca().set_yticks([y + self._zero for y in yticks])
     self._yticks = yticks
 
-  def zero(self, zero):
-    self._zero = zero
-    if not (np.isnan(zero) and not np.isinf(zero)):
-      self.yticks([0, 1.5, 2, 3])
-      plt.gca().set_yticklabels([f'{"+" if val > 0 else ""}{val:.1f} °C' for val in self._yticks])
+  def zero(self, zero): self._zero = zero
 
   def ylimit(self, y):
     self._ylimit = y
@@ -68,13 +62,13 @@ class Charter:
 
   def show(self):
     # CONTEXT
-    #context = "models: " + ' '.join(map(str, self.models)) # +'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
+    #context = 'CMIP6 projections. Averages by 50th quantile. Ranges by 10-90th quantile.'
     #plt.text(0.5, 0.005, context, horizontalalignment='center', color='#cccccc', fontsize=6, transform=plt.gcf().transFigure)
     #print(context)
     plt.show()
 
-  def save(self):
-    self.fig.savefig(f'charts/chart_{self.variable}_{len(self.models)}m.'+self.format)
+  def save(self, tag=''):
+    self.fig.savefig(f'charts/chart_{tag}.'+self.format)
     
   def stack(self, data):
     ax = self.ax
@@ -133,8 +127,6 @@ class Charter:
     colors = self.palette['series']
     try:    
 
-      self.models = self.models | set(models)
-
       # TODO refactor so it's all in one xarray isinstance(variable, (xr.DataArray, xr.Dataset)) # list
       years = data[0].year
       series = data[0][series].values
@@ -173,12 +165,11 @@ class Charter:
     ax = self.ax
     colors = self.palette['series']
     try:
-      self.models = set(data.model.values.flat)
 
       years = data.coords['year'].values
       legend = data.model.values
 
-      if len(self.models)<len(data.model.values):
+      if len(set(data.model.values.flat))<len(data.model.values):
         data = data.groupby('model').mean()
       
       dimension = list(what.keys())[0]

@@ -54,15 +54,15 @@ YELLOW = '\033[33m'
 
 DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
 datastore = None
-datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=True, mark_failing_scenarios=True)
+#datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=True, mark_failing_scenarios=True)
 #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
 
 def main():
-  #GlobalTemperature()
+  GlobalTemperature()
   #GlobalTemperature(drop_experiments=['ssp119'])
   #return maxTemperature(frequency='monthly')
   #maxTemperature(frequency='daily')
-  tropicDaysBuckets()
+  #tropicDaysBuckets()
   #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 # VISUALIZATIONS
@@ -74,11 +74,7 @@ def GlobalTemperature(drop_experiments=None):
     global DATADIR; DATADIR = os.path.join(DATADIR, variable, '')
     try:
         models = pd.read_csv('metadata/models.csv')
-
-        not_hot_models = models[models['tcr'] <= 2.2]
-        likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
-        #likely_models = models[(models['tcr'] >= 1.4) & (models['tcr'] <= 2.2)]
-        not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
+        observed_t = load_observed_temperature()
         
         if datastore:
             datastore.DATADIR = DATADIR
@@ -90,100 +86,116 @@ def GlobalTemperature(drop_experiments=None):
         data = data['tas']
         data = cleanUpData(data)
         data = normalize(data)
+
+        classify_models(data, models)
+
         data = models_with_all_experiments(data, drop_experiments=drop_experiments, dont_count_historical=True)
         
+        preindustrial_t = preindustrial_temp(data)
+
         quantile_ranges = quantiles(data, (.1, .5, .9))
-        preindustrial_t = preindustrial_temp(quantile_ranges[1])
-        observed_t = load_observed_temperature()
+        #preindustrial_t = preindustrial_temp(quantile_ranges[1])
 
         model_set = set(data.model.values.flat)
 
-        chart = visualizations.Charter(variable=variable, 
+        chart = visualizations.Charter(
             title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
-            zero=preindustrial_t, ylimit=[-1,4], reference_lines=[0, 2]
+            zero=preindustrial_t, yticks=[0, 1.5, 2, 3], ylimit=[-1,4], reference_lines=[0, 2], yformat=lambda y, i: f"{'+' if y-preindustrial_t>0 else ''}{y-preindustrial_t:.1f} °C" 
             )
 
         chart.scatter(observed_t + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
 
-
         chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
         chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
-        not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
-        #chart.plot(quantiles(not_hot_data, [.5]), alpha=.6)
-
-        likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
-        #chart.plot(quantiles(likely_data, [.5]), alpha=.3)
-
-        not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
-        #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
-
-        m1 = models[models['model'].isin(model_set)]
-        print(f"+{m1['tcr'].mean():.2f}° ⌀2100: ALL {len(m1)}× ")
-        m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
-        print(f"+{m2['tcr'].mean():.2f}° ⌀2100: NOT HOT TCR {len(m2)}× ")
-        m3 = models[models['model'].isin(likely_data.model.values.flat)]
-        print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
-        m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
-        print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
-
-        #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
-        #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
-        #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
-        #chart.rightContext([final_t_likely, final_t_all])
-
-        # 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
-
 
         chart.show()
-        chart.save()
-        
-        classify_models(data, models, likely_data, likely_models, preindustrial_t)
+        chart.save(tag=f'{variable}_{len(model_set)}')
         
         return data
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=10)
 
 
-def classify_models(data, models, likely_data, likely_models, preindustrial_t):
-  hot_models = models[(models['tcr'] > 2.2)]['model'].values
+def classify_models(data, models):
+    data = data.sel(experiment = data.experiment.isin(['ssp245', 'historical'])) #data = models_with_all_experiments(data, keep_experiments=['ssp245', 'historical'], dont_count_historical=False)
+    model_set = set(data.model.values.flat)
+    preindustrial_t = preindustrial_temp(data)
 
-  chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', zero=preindustrial_t, reference_lines=[0, 2])
+    not_hot_models = models[models['tcr'] <= 2.2]
+    likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
+    not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
 
-  for model in data.model.values.flat:
-    if model in hot_models:
-      color = 'red' 
-    elif model in likely_models['model'].values: 
-      color = 'green'
-    else:
-      color = 'blue'
+    not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
+    #chart.plot(quantiles(not_hot_data, [.5]), alpha=.6)
 
-    first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()-preindustrial_t
-    if first_decade_t >= .8:
-      print(f'{model} historical hot')
-      linewidth=1.3
-    elif first_decade_t <=-.6: 
-      print(f'{model} historical cold')
-      linewidth=1.3
-    else:
-      linewidth=.5
-    chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=.4, color=color, linewidth=linewidth)
+    likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
+    quantile_ranges = quantiles(likely_data, (.1, .5, .9))
+
+
+    not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
+    #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
+
+    m1 = models[models['model'].isin(model_set)]
+    print(f"+{m1['tcr'].mean():.2f}° ⌀2100: ALL {len(m1)}× ")
+    m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
+    print(f"+{m2['tcr'].mean():.2f}° ⌀2100: NOT HOT TCR {len(m2)}× ")
+    m3 = models[models['model'].isin(likely_data.model.values.flat)]
+    print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
+    m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
+    print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
+
+
+    final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item()-preindustrial_t, quantile_ranges))
+    print("GRAND FINALE: ", final_t)
+
+
+    #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+    #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
+    #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
+    #chart.rightContext([final_t_likely, final_t_all])
+
+    # 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
+
+    hot_models = models[(models['tcr'] > 2.2)]['model'].values
+
+    chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', zero=preindustrial_t, reference_lines=[0, 2])
+    chart.plot(quantile_ranges, alpha=1)
+
+    for model in data.model.values.flat:
+      if model in hot_models:
+        color = 'red' 
+      elif model in likely_models['model'].values: 
+        color = 'green'
+      else:
+        color = 'blue'
+
+      first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()-preindustrial_t
+      if first_decade_t >= .8:
+        print(f'{model} historical hot')
+        linewidth=1.3
+      elif first_decade_t <=-.6: 
+        print(f'{model} historical cold')
+        linewidth=1.3
+      else:
+        linewidth=.5
+      chart.plot([data.sel(model=model)], alpha=.4, color=color, linewidth=linewidth)
+    
+    chart.show()
+    chart.save(tag=f'all_classified')
+
   
-  chart.show()
-  chart.save()
+    # Temperature rise for models ordered by TCR
+    models = models.sort_values(by='tcr')
+    for model in models['model']:
+        try:
+            m = data.sel(model=model, experiment='ssp245')
 
-  
-  # Temperature rise for models ordered by TCR
-  models = models.sort_values(by='tcr')
-  for model in models['model']:
-    try:
-      m = data.sel(model=model, experiment='ssp245')
-
-      t = m.where((data['year'] >=2090) & (data['year'] <= 2100), drop=True).mean().item() - preindustrial_t # some models go up to 2200
-      tcr = models.loc[models['model'] == model, 'tcr'].values[0]
-      print(f"tcr: {tcr:.1f} +{t:.1f}° {model}")
-    except:
-      pass #print(f'missing {model}')
+            t = m.where((data['year'] >=2090) & (data['year'] <= 2100), drop=True).mean().item() - preindustrial_t # some models go up to 2200
+            tcr = models.loc[models['model'] == model, 'tcr'].values[0]
+            print(f"tcr: {tcr:.1f} +{t:.1f}° {model}")
+        except:
+            pass #print(f'missing {model}')
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
 def maxTemperature(frequency='daily'):
@@ -222,7 +234,7 @@ def maxTemperature(frequency='daily'):
 
         model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
-        chart = visualizations.Charter(variable=variable,
+        chart = visualizations.Charter(
           title=f'Maximal temperature (in Czechia) projections ({len(model_set)} CMIP6 models)', 
           yticks = [30, 35, 40, 45],
           ylabel='Max Temperature (°C)', yformat=lambda x, pos: f'{x:.0f} °C',
@@ -235,14 +247,14 @@ def maxTemperature(frequency='daily'):
         chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
 
         chart.show()
-        chart.save()
+        chart.save(tag=f'{variable}_{len(model_set)}')
 
 
         chart = visualizations.Charter(title=f'Maximum temperature projections ({len(model_set)} CMIP6 models)')
         for model in model_set:
           chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=.4, linewidth=.5)
         chart.show()
-        chart.save()
+        chart.save(tag=f'all_{variable}_{len(model_set)}')
 
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc()
@@ -277,7 +289,7 @@ def tropicDaysBuckets():
 
         data = data.median(dim='model').max(dim='experiment')      
 
-        chart = visualizations.Charter(variable=variable, models=model_set,
+        chart = visualizations.Charter(
             title=f'Tropic days (in Czechia) projection ({len(model_set)} CMIP6 models)', 
             subtitle="When no decline of emissions till 2050 (ssp245 scenario)", 
             ylabel='Tropic days annually',
@@ -286,7 +298,7 @@ def tropicDaysBuckets():
         chart.stack(data)
         chart.scatter(observed_tropic_days_annually, label='Observed 30+ °C') # expects year as index
         chart.show()
-        chart.save()
+        chart.save(tag=f'tropic_days_{len(model_set)}')
 
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc()
@@ -326,7 +338,7 @@ def discovery():
     #data=data.sel(experiment='ssp126')
     print(data)
 
-    chart = visualizations.Charter(variable=variable)
+    chart = visualizations.Charter()
     #chart.plot(data, what={'experiment': None})
 
     data = data['tas']
@@ -563,38 +575,51 @@ def normalize(data):
 
     return data
 
-def models_with_all_experiments(data, dont_count_historical=False, drop_experiments=None):
+def models_with_all_experiments(data, dont_count_historical=False, drop_experiments=None, keep_experiments=None):
 
-  if drop_experiments:
-    data = data.sel(experiment =~ data.experiment.isin(drop_experiments))
+    if drop_experiments:
+        data = data.sel(experiment =~ data.experiment.isin(drop_experiments))
+    if keep_experiments:
+        data = data.sel(experiment = data.experiment.isin(drop_experiments))
 
-  experiments = set(data.experiment.values.flat)
-  if dont_count_historical:
-    experiments = experiments - {'historical'} 
-  
-  models_by_experiment = {experiment: set(data.sel(experiment=experiment).dropna(dim='model', how='all').model.values.flat) for experiment in experiments}
-  models_available_by_experiment = [models[1] for models in models_by_experiment.items()]
-  
-  intersection = set.intersection(*models_available_by_experiment)
-  union = set.union(*models_available_by_experiment)
 
-  print(f'{len(intersection)}/{len(union)} models in all experiments')
+    experiments = set(data.experiment.values.flat)
+    if dont_count_historical:
+        experiments = experiments - {'historical'} 
+    
+    models_by_experiment = {experiment: set(data.sel(experiment=experiment).dropna(dim='model', how='all').model.values.flat) for experiment in experiments}
+    models_available_by_experiment = [models[1] for models in models_by_experiment.items()]
+    
+    intersection = set.intersection(*models_available_by_experiment)
+    union = set.union(*models_available_by_experiment)
 
-  data = data.sel(model = data.model.isin(list(intersection)))
-  data = data.dropna(dim='model', how='all')
-  
-  remained = set(data.model.values.flat)
-  print(f"\n{len(remained)} remained: {remained}") #: {' '.join(remained)}
+    print(f'{len(intersection)}/{len(union)} models in all experiments')
 
-  for experiment in models_by_experiment.items():
-    print(f"{len(experiment[1])}⨉ {experiment[0]}, except: {sorted(union-set(experiment[1]))}")
-    #print(experiment[1])
+    data = data.sel(model = data.model.isin(list(intersection)))
+    data = data.dropna(dim='model', how='all')
+    
+    remained = set(data.model.values.flat)
+    print(f"\n{len(remained)} remained: {remained}") #: {' '.join(remained)}
 
-  return data
+    for experiment in models_by_experiment.items():
+        print(f"{len(experiment[1])}⨉ {experiment[0]}, except: {sorted(union-set(experiment[1]))}")
+        #print(experiment[1])
+
+    return data
 
 
 def preindustrial_temp(data):
-  return data.sel(year=slice(1850, 1900)).mean(dim='year').mean(dim='experiment').item()
+    if isinstance(data, (xr.DataArray, xr.Dataset)):
+        preindustrial_period = data.sel(experiment = 'historical').sel(year=slice(1850, 1900))
+        
+        if 'model' in data.dims: # quantiles not count yet
+            preindustrial_period = preindustrial_period.quantile(.5, dim='model')
+        
+        return preindustrial_period.mean(dim='year').item()
+    
+    else: # dataframe
+        return data.loc[1850:1900].mean()
+
 
 md = util.loadMD('model_md')
 
