@@ -146,7 +146,7 @@ def classify_models(data, models):
     print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
 
 
-    final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item()-preindustrial_t, quantile_ranges))
+    final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item(), quantile_ranges))
     print("GRAND FINALE: ", final_t)
 
 
@@ -159,8 +159,9 @@ def classify_models(data, models):
 
     hot_models = models[(models['tcr'] > 2.2)]['model'].values
 
-    chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)', zero=preindustrial_t, reference_lines=[0, 2])
+    chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)') #, reference_lines=[0, 2]
     chart.plot(quantile_ranges, alpha=1)
+    chart.annotate(final_t)
 
     for model in data.model.values.flat:
       if model in hot_models:
@@ -170,7 +171,7 @@ def classify_models(data, models):
       else:
         color = 'blue'
 
-      first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()-preindustrial_t
+      first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()
       if first_decade_t >= .8:
         print(f'{model} historical hot')
         linewidth=1.3

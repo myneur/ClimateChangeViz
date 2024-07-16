@@ -100,16 +100,14 @@ class Charter:
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-  def rightContext(self, data):
+  def annotate(self, data):
     ax = self.ax
-    for d in data:
-      ax.plot([ax.get_xlim()[1]], [d], 'ro')
-      ax.annotate('Point', 
-        xy=(1, d), 
-        xycoords='axes fraction', 
-        xytext=(10, 0), textcoords='offset points',
-        arrowprops=dict(facecolor='black', shrink=0.05),
-        horizontalalignment='right', verticalalignment='bottom')
+    x = 2102
+    ax.annotate('', xy=(x, data[0]), xytext=(x, data[-1]), arrowprops=dict(arrowstyle='-', color=self.palette['series'][1], lw=2))
+    ax.annotate('likely', xy=(x, data[1]), xytext=(x+2, data[1]), textcoords='data', ha='left', va='center', fontsize=12, color=self.palette['series'][0])
+
+    plt.xlim(1850, x+10)
+
 
   def scatter(self, data, label=None):
     ax = self.ax
