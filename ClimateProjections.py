@@ -57,9 +57,10 @@ datastore = None
 #datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=True, mark_failing_scenarios=True)
 #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
 
+experiments = list(scenarios['to-visualize'].keys())
+
 def main():
   GlobalTemperature()
-  #GlobalTemperature(drop_experiments=['ssp119'])
   #return maxTemperature(frequency='monthly')
   #maxTemperature(frequency='daily')
   #tropicDaysBuckets()
@@ -67,11 +68,9 @@ def main():
 
 # VISUALIZATIONS
 
-experiments = list(scenarios['to-visualize'].keys())
-
 def GlobalTemperature(drop_experiments=None):
     variable = 'temperature'; 
-    global DATADIR; DATADIR = os.path.join(DATADIR, variable, '')
+    global DATADIR; DATADIR = os.path.join(DATADIR, variable, ''); global experiments
     try:
         models = pd.read_csv('metadata/models.csv')
         observed_t = load_observed_temperature()
@@ -86,33 +85,37 @@ def GlobalTemperature(drop_experiments=None):
         data = data['tas']
         data = cleanUpData(data)
         data = normalize(data)
+        data_all = data
 
         classify_models(data, models, observed_t)
+        while len(experiments)>=2:
+            data = models_with_all_experiments(data_all, keep_experiments=experiments, dont_count_historical=True)
+            
+            preindustrial_t = preindustrial_temp(data)
 
-        data = models_with_all_experiments(data, drop_experiments=drop_experiments, dont_count_historical=True)
-        
-        preindustrial_t = preindustrial_temp(data)
+            quantile_ranges = quantiles(data, (.1, .5, .9))
+            #preindustrial_t = preindustrial_temp(quantile_ranges[1])
 
-        quantile_ranges = quantiles(data, (.1, .5, .9))
-        #preindustrial_t = preindustrial_temp(quantile_ranges[1])
+            model_set = set(data.model.values.flat)
 
-        model_set = set(data.model.values.flat)
+            chart = visualizations.Charter(
+                title=f'Global temperature change projections ({len(model_set)} CMIP6 models)', 
+                #ylabel='Difference from pre-industrial era',
+                zero=preindustrial_t, yticks=[0, 1.5, 2, 3], ylimit=[-1,4], reference_lines=[0, 2], 
+                yformat=lambda y, i: f"{'+' if y-preindustrial_t>0 else ''}{y-preindustrial_t:.1f} °C" 
+                )
 
-        chart = visualizations.Charter(
-            title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
-            zero=preindustrial_t, yticks=[0, 1.5, 2, 3], ylimit=[-1,4], reference_lines=[0, 2], 
-            yformat=lambda y, i: f"{'+' if y-preindustrial_t>0 else ''}{y-preindustrial_t:.1f} °C" 
-            )
+            chart.scatter(observed_t + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
 
-        chart.scatter(observed_t + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
+            chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
+            chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
+            chart.annotate_forecast(y=preindustrial_t)
 
-        chart.plot([quantile_ranges[0], quantile_ranges[-1]], ranges=True, labels=scenarios['to-visualize'], models=model_set)
-        chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
+            chart.show()
+            chart.save(tag=f'{variable}_{len(model_set)}_{"+".join(experiments)}')
 
-
-        chart.show()
-        chart.save(tag=f'{variable}_{len(model_set)}')
-        
+            experiments = experiments[0:1] + experiments[2:]
+            
         return data
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=10)
@@ -155,7 +158,8 @@ def classify_models(data, models, observed_t):
     hot_models = models[(models['tcr'] > 2.2)]['model'].values
 
     chart = visualizations.Charter(
-        title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)',
+        title=f'Global temperature change projections ({len(set(data.model.values.flat))} CMIP6 models)',
+        #ylabel='Difference from pre-industrial era',
         yticks=[0, 1.5, 2, 3, 4], ylimit=[-1,5], reference_lines=[0, 2], 
         yformat=lambda y, i: f"{'+' if y>0 else ''}{y:.1f} °C" 
         ) 
@@ -192,7 +196,7 @@ def classify_models(data, models, observed_t):
         chart.plot([data.sel(model=model)], alpha=alpha, color=color, linewidth=.5)
 
     chart.add_legend([[scenarios['to-visualize']['ssp245'], palette[1]]])
-    chart.mark_left_right()
+    chart.annotate_forecast()
     
     chart.show()
     chart.save(tag=f'all_classified')

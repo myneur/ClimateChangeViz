@@ -114,9 +114,12 @@ class Charter:
         ax.annotate(text, xy=(x, data[1]), xytext=(x+2, label_y), 
             textcoords='data', ha='left', va=align, fontsize=12, color=self.palette['series'][0])
 
-        plt.xlim(1850, x+10)
+        plt.xlim(1850, 2100)
+        plt.subplots_adjust(right=.9)
+        plt.gca().margins(x=0)
+        plt.gca().set_xlim(1850, x+2)
 
-    def mark_left_right(self, x=2015, y=0):
+    def annotate_forecast(self, x=2015, y=0):
         size = 10
         color='#717174'
         plt.annotate('', xy=(x-size, y), xytext=(x+size, y), arrowprops=dict(arrowstyle='<|-', color=color))
@@ -231,8 +234,8 @@ class Charter:
         xticks_major = [1850, 1900, 1950, 2000, 2015, 2050, 2075, 2100]
         #bisect.insort(xticks_major, current_year)
 
-        xticks_minor = [1899, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
-        xtickvals_minor = ['Industrial\nEra', 'Baby\nBoomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
+        xticks_minor = [1875, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
+        xtickvals_minor = ['Pre-industrial\nEra', 'Baby\nBoomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
 
         ax.set_xticks(xticks_major) 
         ax.set_xticklabels(xticks_major)
@@ -246,4 +249,9 @@ class Charter:
         
         if self.marker:
             ax.axvline(x=self.marker, color='white', linewidth=.5)
+
+        zero = self._zero - .8
+        ax.hlines(y=zero, xmin=1850, xmax=1900, color='#b2b2b2')
+        ax.vlines(x=1900, ymin=zero, ymax=zero-.1, color='#b2b2b2', linestyle='-')
+        ax.vlines(x=1850, ymin=zero, ymax=zero-.1, color='#b2b2b2', linestyle='-')
         #else: ax.axvline(x=current_year, color='lightgray', linewidth=.5)
