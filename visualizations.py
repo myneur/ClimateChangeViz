@@ -32,8 +32,6 @@ class Charter:
             'coldhot': ['#003D72', '#777777', '#FFA787']
             }
 
-        
-
         self.zero(zero)
         if yticks: self.yticks(yticks)
         if yformat:
@@ -42,7 +40,6 @@ class Charter:
         if ylimit: self.ylimit(ylimit)
 
         if reference_lines: self.reference_lines(reference_lines)
-        self._xaxis_climatic(self.ax)
 
     def yticks(self, yticks):
         plt.gca().set_yticks([y + self._zero for y in yticks])
@@ -101,6 +98,7 @@ class Charter:
             ax.legend(handles, labels, loc='upper left', frameon=False)
         
         except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+        self._xaxis_climatic()
 
     def add_legend(self, legends):
         for l in legends: plt.plot([], [], label=l[0], color=l[1])
@@ -137,6 +135,7 @@ class Charter:
             y, marker='o', color='black', s=7, 
             label=label)
         ax.legend(frameon=False)
+        self._xaxis_climatic()
 
     def plot(self, data, labels=None, models=[], ranges=False, alpha=None, color=None, series='experiment', dimensions=None, linewidth=1.8):
         ax = self.ax
@@ -174,7 +173,7 @@ class Charter:
             ax.legend(handles, labels, loc='upper left', frameon=False)
         
         except Exception as e: print(f"Visualization\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
-
+        self._xaxis_climatic()
 
 
     def plotDiscovery(self, data, ranges=None, what='mean', labels=None):
@@ -224,9 +223,16 @@ class Charter:
         
         except Exception as e: print(f"Visualization\nError: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
+    def run_once(f):
+        def wrapper(self, *args, **kwargs):
+            if not getattr(self, '_decorated', False):
+                f(self, *args, **kwargs)
+                self._decorated = True
+        return wrapper
 
-
-    def _xaxis_climatic(self, ax, marker=None):
+    @run_once
+    def _xaxis_climatic(self, marker=None):
+        ax = self.ax
         current_year = datetime.datetime.now().year
         ax.set(xlim=(1850, 2100))
         plt.subplots_adjust(left=.08, right=.97, top=0.95, bottom=0.15)
@@ -237,10 +243,12 @@ class Charter:
         xticks_minor = [1875, 1945, 1970, 1995, 2020, 2045, 2070, 2095]
         xtickvals_minor = ['Pre-industrial\nEra', 'Baby\nBoomers', '+1 gen', '+2 gen', '+3 gen', '+4 gen', '+5 gen', '+6 gen']
 
+        color = '#b2b2b2'
+
         ax.set_xticks(xticks_major) 
         ax.set_xticklabels(xticks_major)
         ax.set_xticks(xticks_minor, minor=True)    
-        ax.set_xticklabels(xtickvals_minor, minor=True, rotation=25, va='bottom', ha='center',    fontstyle='italic', color='#b2b2b2', fontsize=11)
+        ax.set_xticklabels(xtickvals_minor, minor=True, rotation=25, va='bottom', ha='center',    fontstyle='italic', color=color, fontsize=11)
         ax.xaxis.set_tick_params(which='minor', pad=70, color="white")
 
         for tick, label in zip(ax.get_xticks(), ax.get_xticklabels()):
@@ -250,8 +258,11 @@ class Charter:
         if self.marker:
             ax.axvline(x=self.marker, color='white', linewidth=.5)
 
-        zero = self._zero - .8
-        ax.hlines(y=zero, xmin=1850, xmax=1900, color='#b2b2b2')
-        ax.vlines(x=1900, ymin=zero, ymax=zero-.1, color='#b2b2b2', linestyle='-')
-        ax.vlines(x=1850, ymin=zero, ymax=zero-.1, color='#b2b2b2', linestyle='-')
+        zero = plt.gca().get_ylim()[0]
+        height = .1
+        
+        ax.hlines(y=zero+height, xmin=1850, xmax=1900, color=color)
+        ax.vlines(x=1900, ymin=zero, ymax=zero+height, color=color, linestyle='-')
+        ax.vlines(x=1850, ymin=zero, ymax=zero+height, color=color, linestyle='-')
         #else: ax.axvline(x=current_year, color='lightgray', linewidth=.5)
+

@@ -128,11 +128,13 @@ def classify_models(data, models, observed_t):
     preindustrial_t = preindustrial_temp(data)
     data = data - preindustrial_t
 
+    # Model classes
     not_hot_models = models[models['tcr'] <= 2.2]
     likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
     likely_models_ecs = models[(models['ecs'] <= 4.5) & (models['ecs'] >= 1.5)]
     hot_models = models[models['tcr'] > 2.2]
     
+    # Data by classes
     not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
     likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
     likely_data_ecs = data.sel(model = data.model.isin(likely_models_ecs['model'].values))
@@ -147,22 +149,13 @@ def classify_models(data, models, observed_t):
     m4 = models[models['model'].isin(likely_data_ecs.model.values.flat)]
     print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
 
+    # 2100 temperatures
 
     #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
     #final_t_likely = likely_t[0].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
     #print(f"\nALL models {final_t_likely:.2f} > LIKELY models {final_t_all:.2f} ssp245\n")
     #chart.rightContext([final_t_likely, final_t_all])
 
-    # 3. plot labels explaining the model slection or selections means(s) at 2100 to the right edge of the chart
-
-    hot_models = models[(models['tcr'] > 2.2)]['model'].values
-
-    chart = visualizations.Charter(
-        title=f'Global temperature change projections ({len(set(data.model.values.flat))} CMIP6 models)',
-        #ylabel='Difference from pre-industrial era',
-        yticks=[0, 1.5, 2, 3, 4], ylimit=[-1,5], reference_lines=[0, 2], 
-        yformat=lambda y, i: f"{'+' if y>0 else ''}{y:.1f} °C" 
-        ) 
     likely_range = quantiles(likely_data, (.1, .9))
     hot_range = quantiles(hot_data, (.1, .9))
     final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item(), likely_range))
@@ -170,20 +163,48 @@ def classify_models(data, models, observed_t):
     
     print("GRAND FINALE (likely): ", final_t)
 
+    # Comparing Temperature rise for models sorted by TCR
+
+    models = models.sort_values(by='tcr')
+    for model in models['model']:
+        try:
+            m = data.sel(model=model, experiment='ssp245')
+
+            t = m.where((data['year'] >=2090) & (data['year'] <= 2100), drop=True).mean().item() # some models go up to 2200
+            tcr = models.loc[models['model'] == model, 'tcr'].values[0]
+            print(f"tcr: {tcr:.1f} +{t:.1f}° {model}")
+        except:
+            pass #print(f'missing {model}')
+
+    # Charts
+
+    chart = visualizations.Charter(
+        title=f'Global temperature change projections ({len(set(data.model.values.flat))} CMIP6 models)',
+        #ylabel='Difference from pre-industrial era',
+        yticks=[0, 1.5, 2, 3, 4], ylimit=[-1,5], reference_lines=[0, 2], 
+        yformat=lambda y, i: f"{'+' if y>0 else ''}{y:.1f} °C" 
+        ) 
+
     palette = chart.palette['coldhot']
 
     chart.scatter(observed_t, label='measurements')
+
+    # Likely range
 
     chart.plot(likely_range, alpha=1, linewidth=1, color=palette[1])
     chart.annotate(final_t, 'likely', palette[1], offset=4)
     chart.annotate(final_t_hot, 'hot\nmodels', palette[-1], offset=2, align='top')
 
+    hot_model_set = hot_models['model'].values
+    likely_model_set = likely_models['model'].values
 
+    # All models
+    
     alpha = .3
     for model in data.model.values.flat:
-        if model in hot_models: 
+        if model in hot_model_set: 
             color = palette[-1]
-        elif model in likely_models['model'].values: 
+        elif model in likely_model_set: 
             color = palette[1]
             alpha = .2
         else: 
@@ -195,24 +216,14 @@ def classify_models(data, models, observed_t):
         
         chart.plot([data.sel(model=model)], alpha=alpha, color=color, linewidth=.5)
 
+    # Annotations
+
     chart.add_legend([[scenarios['to-visualize']['ssp245'], palette[1]]])
     chart.annotate_forecast()
     
     chart.show()
     chart.save(tag=f'all_classified')
 
-  
-    # Temperature rise for models sorted by TCR
-    models = models.sort_values(by='tcr')
-    for model in models['model']:
-        try:
-            m = data.sel(model=model, experiment='ssp245')
-
-            t = m.where((data['year'] >=2090) & (data['year'] <= 2100), drop=True).mean().item() - preindustrial_t # some models go up to 2200
-            tcr = models.loc[models['model'] == model, 'tcr'].values[0]
-            print(f"tcr: {tcr:.1f} +{t:.1f}° {model}")
-        except:
-            pass #print(f'missing {model}')
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
 def maxTemperature(frequency='daily'):
@@ -220,18 +231,7 @@ def maxTemperature(frequency='daily'):
     try:
         models = pd.read_csv('metadata/models.csv')
 
-        observed_max_t=[]
-        for file in glob('data/Czechia/*.xlsx'):
-            observations = pd.read_excel(file, sheet_name='teplota maximální', header=3)
-            max_t = observations.iloc[:, :2].copy()
-            max_t['Max'] = observations.iloc[:, 2:].max(axis=1)
-            max_t = max_t.rename(columns={'rok': 'Year', 'měsíc': 'Month'})
-            max_t = max_t.groupby('Year').max()
-            max_t = max_t.drop(columns=['Month'])
-            observed_max_t.append(max_t)
-        observed_max_t = pd.concat(observed_max_t)
-        observed_max_t = observed_max_t.groupby(observed_max_t.index)['Max'].max()
-
+        observed_max_t = load_observed_max_temperature()
 
         if datastore:
             datastore.DATADIR = DATADIR
@@ -244,7 +244,7 @@ def maxTemperature(frequency='daily'):
         data = cleanUpData(data)
         #data = models_with_all_experiments(data, dont_count_historical=True)
         data = data['tasmax']
-        #data = normalize(data)
+        data = normalize(data) # TO REVIEW: should we normalize max the same way like avg? 
         
         quantile_ranges = quantiles(data, (.1, .5, .9))
         maxes = {'Madrid': 35}
@@ -254,7 +254,7 @@ def maxTemperature(frequency='daily'):
         chart = visualizations.Charter(
           title=f'Maximal temperature (in Czechia) projections ({len(model_set)} CMIP6 models)', 
           yticks = [30, 35, 40, 45],
-          ylabel='Max Temperature (°C)', yformat=lambda x, pos: f'{x:.0f} °C',
+          ylabel='Max Temperature', yformat=lambda x, pos: f'{x:.0f} °C',
           reference_lines=[preindustrial_temp(quantile_ranges[1]),40]
           )
 
@@ -266,29 +266,45 @@ def maxTemperature(frequency='daily'):
         chart.show()
         chart.save(tag=f'{variable}_{len(model_set)}')
 
-
         chart = visualizations.Charter(title=f'Maximum temperature projections ({len(model_set)} CMIP6 models)')
         for model in model_set:
-          chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=.4, linewidth=.5)
+            chart.plot([data.sel(model=model, experiment = data.experiment.isin(['ssp245', 'historical']))], alpha=.4, linewidth=.5)
         chart.show()
         chart.save(tag=f'all_{variable}_{len(model_set)}')
 
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc()
 
+def load_observed_max_temperature():
+    observed_max_t=[]
+    for file in glob('data/Czechia/*.xlsx'):
+        observations = pd.read_excel(file, sheet_name='teplota maximální', header=3)
+        max_t = observations.iloc[:, :2].copy()
+        max_t['Max'] = observations.iloc[:, 2:].max(axis=1)
+        max_t = max_t.rename(columns={'rok': 'Year', 'měsíc': 'Month'})
+        max_t = max_t.groupby('Year').max()
+        max_t = max_t.drop(columns=['Month'])
+        observed_max_t.append(max_t)
+    observed_max_t = pd.concat(observed_max_t)
+    return observed_max_t.groupby(observed_max_t.index)['Max'].max()
+
+def load_observed_tropic_days():
+    max_by_place = [pd.read_excel(file, sheet_name='teplota maximální', header=3) for file in glob('data/Czechia/*.xlsx')]
+    max_by_place = pd.concat(max_by_place)
+    max_by_place = max_by_place.rename(columns={'rok': 'Year', 'měsíc': 'Month'})
+    
+    days = max_by_place.columns[2:]
+    max_daily = max_by_place.groupby(['Year', 'Month']).agg({day: 'max' for day in days})
+    max_daily['tropic_days'] = (max_daily[days] >= 30).sum(axis=1)
+    observed_tropic_days_annually = max_daily.groupby('Year')['tropic_days'].sum()
+    return observed_tropic_days_annually
+
 def tropicDaysBuckets():
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+'daily', '')
     try:
         models = pd.read_csv('metadata/models.csv')
 
-        max_by_place = [pd.read_excel(file, sheet_name='teplota maximální', header=3) for file in glob('data/Czechia/*.xlsx')]
-        max_by_place = pd.concat(max_by_place)
-        max_by_place = max_by_place.rename(columns={'rok': 'Year', 'měsíc': 'Month'})
-        
-        days = max_by_place.columns[2:]
-        max_daily = max_by_place.groupby(['Year', 'Month']).agg({day: 'max' for day in days})
-        max_daily['tropic_days'] = (max_daily[days] >= 30).sum(axis=1)
-        observed_tropic_days_annually = max_daily.groupby('Year')['tropic_days'].sum()
+        observed_tropic_days_annually = load_observed_tropic_days()
             
         if datastore:
             datastore.DATADIR = DATADIR
@@ -299,7 +315,7 @@ def tropicDaysBuckets():
         data = loadAggregated(wildcard='tasmaxbuckets_')
 
         data = cleanUpData(data)
-        #data = normalize(data)
+        #data = normalize(data) # TO REVIEW: should we normalize max the same way like avg? 
         data = models_with_all_experiments(data, dont_count_historical=True)
 
         model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
@@ -536,54 +552,65 @@ def loadAggregated(models=None, experiments=None, unavailable_experiments=None, 
     return data_ds'''
 
 def cleanUpData(data):
-  # removing historical data before 2014, because some models can include them despite request
-  try:
-    def filter_years(ds):
-      if 'historical' in ds['experiment']:
-        ds = ds.sel(year=ds['year'] < forecast_from)
-      return ds
-    data = data.groupby('experiment').map(filter_years) #, squeeze=True
-    
-    ''' # CHECK FOR MISSING YEARS
-    raise(NotImplementedError)
-    for model in data.model.values.flat:
-      for experiment in data.experiment.values.flat:
-        year_range = np.arange(1850, 2101)
-        ds = data.sel(model=model, experiment=experiment)
-        years = ds['year'].values
-        missing_years = np.setdiff1d(year_range, years)
-        unique_years, counts = np.unique(years, return_counts=True)
-        duplicate_years = unique_years[counts > 1]
-
-        if missing_years.size > 0:
-            print(f"{YELLOW}Missing years:{RESET} {missing_years} in {model} {experiment}")
-        if duplicate_years.size > 0:
-            print(f"{YELLOW}Duplicate years:{RESET} {duplicate_years} in {model} {experiment}")
-    '''
-    # merging data series of different periods for the same model
-    #models = data.model.values
-    #if len(models) > len(set(models)):
-
-    data = data.groupby('model').mean('model')
-  except Exception as e: 
-    print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); 
-    traceback.print_exc(limit=1)  
-    print(data)
-
-  return data
-
-def normalize(data):
+    # removing historical data beyond requested period, because some models can include them despite request
     try:
-      model_mean = data.sel(experiment='historical').sel(year=slice(forecast_from-20, forecast_from-1)).mean(dim='year')
+        def filter_years(ds):
+            if 'historical' in ds['experiment']:
+                ds = ds.sel(year=ds['year'] < forecast_from)
 
-      global_mean = model_mean.mean(dim='model').item()
+            return ds
+        data = data.groupby('experiment').map(filter_years) #, squeeze=True
+        
+        ''' # CHECK FOR MISSING YEARS
+        raise(NotImplementedError)
+        for model in data.model.values.flat:
+          for experiment in data.experiment.values.flat:
+            year_range = np.arange(1850, 2101)
+            ds = data.sel(model=model, experiment=experiment)
+            years = ds['year'].values
+            missing_years = np.setdiff1d(year_range, years)
+            unique_years, counts = np.unique(years, return_counts=True)
+            duplicate_years = unique_years[counts > 1]
 
-      normalization_offset = model_mean - global_mean
-      normalization_offset_expanded = normalization_offset.expand_dims(dim={'year': data.year}).transpose('model', 'year')
+            if missing_years.size > 0:
+                print(f"{YELLOW}Missing years:{RESET} {missing_years} in {model} {experiment}")
+            if duplicate_years.size > 0:
+                print(f"{YELLOW}Duplicate years:{RESET} {duplicate_years} in {model} {experiment}")
+        '''
+        # merging data series of different periods for the same model
+        #models = data.model.values
+        #if len(models) > len(set(models)):
 
-      data = data - normalization_offset_expanded
+        data = data.groupby('model').mean('model')
+    except Exception as e: 
+        print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); 
+        traceback.print_exc(limit=1)  
+        print(data)
 
-      #print(f"NORMALIZED {normalized_data.sel(experiment='ssp126', model=normalized_data.model.values.flat[0], year=slice(2014,2015))}")
+    return data
+
+def normalize(data, measurements=None, period=20):
+    try:
+
+        if measurements: # normalize to overlapping period if we have measurements
+            last_measurement = measurements.index[-1]
+            overlap = measurements[measurements.index >= forecast_from]
+            measured_mean = overlap.mean()
+            print(f'{len(overlap)} years overlap since {last_measurement} to {measurements.index[-1]}')
+
+            model_mean = data.sel(experiment='historical').sel(year=slice(last_measurement-len(overlap), last_measurement+1)).mean(dim='year')
+            global_mean = model_mean.mean(dim='model').item()
+            normalization_offset = model_mean - measured_mean
+
+        else: # normalize to last 2 decades of hindcast if we don't have measurements
+            model_mean = data.sel(experiment='historical').sel(year=slice(forecast_from-period, forecast_from)).mean(dim='year')
+            global_mean = model_mean.mean(dim='model').item()
+            normalization_offset = model_mean - global_mean
+        
+        normalization_offset_expanded_to_all_years = normalization_offset.expand_dims(dim={'year': data.year}).transpose('model', 'year')
+        data = data - normalization_offset_expanded_to_all_years
+
+        #print(f"NORMALIZED {normalized_data.sel(experiment='ssp126', model=normalized_data.model.values.flat[0], year=slice(2014,2015))}")
 
     except Exception as e: 
         print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); 
