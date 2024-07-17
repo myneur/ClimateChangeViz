@@ -119,18 +119,20 @@ def GlobalTemperature(drop_experiments=None):
 
 
 def classify_models(data, models, observed_t):
-    data = data.sel(experiment = data.experiment.isin(['ssp245', 'historical'])) #data = models_with_all_experiments(data, keep_experiments=['ssp245', 'historical'], dont_count_historical=False)
+    #data = data.sel(experiment = data.experiment.isin(['ssp245', 'historical'])) 
+    data = models_with_all_experiments(data, keep_experiments=['ssp245', 'historical'], dont_count_historical=True)
     model_set = set(data.model.values.flat)
     preindustrial_t = preindustrial_temp(data)
+    data = data - preindustrial_t
 
     not_hot_models = models[models['tcr'] <= 2.2]
     likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
-    not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
+    likely_models_ecs = models[(models['ecs'] <= 4.5) & (models['ecs'] >= 1.5)]
     hot_models = models[models['tcr'] > 2.2]
     
     not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
     likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
-    not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
+    likely_data_ecs = data.sel(model = data.model.isin(likely_models_ecs['model'].values))
     hot_data = data.sel(model = data.model.isin(hot_models['model'].values))
     
     m1 = models[models['model'].isin(model_set)]
@@ -139,7 +141,7 @@ def classify_models(data, models, observed_t):
     print(f"+{m2['tcr'].mean():.2f}° ⌀2100: NOT HOT TCR {len(m2)}× ")
     m3 = models[models['model'].isin(likely_data.model.values.flat)]
     print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
-    m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
+    m4 = models[models['model'].isin(likely_data_ecs.model.values.flat)]
     print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
 
 
@@ -153,7 +155,10 @@ def classify_models(data, models, observed_t):
     hot_models = models[(models['tcr'] > 2.2)]['model'].values
 
     chart = visualizations.Charter(
-        title=f'Global temperature projections ssp245 ({len(set(data.model.values.flat))} CMIP6 models)') #, reference_lines=[0, 2]
+        title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)',
+        yticks=[0, 1.5, 2, 3, 4], ylimit=[-1,5], reference_lines=[0, 2], 
+        yformat=lambda y, i: f"{'+' if y>0 else ''}{y:.1f} °C" 
+        ) 
     likely_range = quantiles(likely_data, (.1, .9))
     hot_range = quantiles(hot_data, (.1, .9))
     final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item(), likely_range))
@@ -163,11 +168,11 @@ def classify_models(data, models, observed_t):
 
     palette = chart.palette['coldhot']
 
-    chart.scatter(observed_t + preindustrial_t)
+    chart.scatter(observed_t, label='measurements')
 
     chart.plot(likely_range, alpha=1, linewidth=1, color=palette[1])
     chart.annotate(final_t, 'likely', palette[1], offset=4)
-    chart.annotate(final_t_hot, 'hot\nmodels', palette[-1], align='top')
+    chart.annotate(final_t_hot, 'hot\nmodels', palette[-1], offset=2, align='top')
 
 
     alpha = .3
@@ -181,12 +186,13 @@ def classify_models(data, models, observed_t):
             color = palette[0]
 
         first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()
-        
         if first_decade_t >= .8: print(f'{model} historical hot')
         elif first_decade_t <=-.6: print(f'{model} historical cold')
         
-        
         chart.plot([data.sel(model=model)], alpha=alpha, color=color, linewidth=.5)
+
+    chart.add_legend([[scenarios['to-visualize']['ssp245'], palette[1]]])
+    chart.mark_left_right()
     
     chart.show()
     chart.save(tag=f'all_classified')
@@ -587,7 +593,7 @@ def models_with_all_experiments(data, dont_count_historical=False, drop_experime
     if drop_experiments:
         data = data.sel(experiment =~ data.experiment.isin(drop_experiments))
     if keep_experiments:
-        data = data.sel(experiment = data.experiment.isin(drop_experiments))
+        data = data.sel(experiment = data.experiment.isin(keep_experiments))
 
 
     experiments = set(data.experiment.values.flat)

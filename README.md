@@ -24,7 +24,7 @@ Averages by the 50th quantile. Ranges by the 10-90th quantile. Normalized to las
 ![Local temperature max projections (CMIP6 models)](charts/latest_max.svg)
 
 ### Tropic days annualy in Czechia
-![Local tropic days in the summer months with max temperatures over 30 °C projections (CMIP6 models)](charts/latest_tropic.png)
+![Local tropic days in the summer months with max temperatures over 30 °C projections (CMIP6 models)](charts/latest_tropic.svg)
 
 ### Context: Work In Progress
 
@@ -53,6 +53,8 @@ To interpret the variance among the CMIP models, the Intergovernmental Panel on 
 Currently, the biggest debate is about so-called _'hot models'_ that predict the highest warming. In the IPCC 'assessed warming', they are considered to be less likely, because they less accurately reproduce historical temperatures over time.
 
 Alternatively, a subset of models with __'TCR'__ between 1.4-2.2 ºC can be used to produce very close results, as described in the [Nature.com article](http://doi.org/10.1038/d41586-022-01192-2). _Nature_, is one of the top scientific journals recognized for its rigorous peer-review process involving multiple rounds of evaluation by experts in the field.
+
+![Global temperature projections by model (CMIP6 models)](charts/models_classified.svg)
 
 - __TCR: Transient Climate Response__ is the amount of global warming in the year in which atmospheric CO2 concentrations have finally doubled after having steadily increased by 1% every year.
 
@@ -93,6 +95,6 @@ Tested only on python3.
 Downloading is tricky, because not all models are available on all servers.
 
 - DownloaderCopernicus is easier to start with, but more models are missing there. 
-- DownloaderESGF has more models, but can be hard to tame. It might be necessary to add trusted certificates in the computer or toggle following methods (`method='request'|'wget'`).
+- DownloaderESGF has more models, but can be hard to tame. It might be necessary to add trusted certificates in the computer or toggle following methods (`method='request'|'wget'`) like in the downloader.py main().
 
 
