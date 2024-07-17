@@ -27,8 +27,10 @@ class Charter:
     self.ax = ax
 
     self.palette = {
-      'heat': ["#E0C030", "#E0AB2F", "#E0952F", "#E0762F", "#E0572F", "#E0382F", "#BA2D25", "#911B14", "#690500"],
-      'series': ["#777777", '#3DB5AF','#61A3D2','#EE7F00', '#E34D21', 'black']}
+      'heat': ['#E0C030', '#E0AB2F', '#E0952F', '#E0762F', '#E0572F', '#E0382F', '#BA2D25', '#911B14', '#690500'],
+      'series': ['#777777', '#3DB5AF','#61A3D2','#EE7F00', '#E34D21', 'black'],
+      'coldhot': ['#003D72', '#777777', '#FFA787']
+      }
 
     
 
@@ -100,11 +102,13 @@ class Charter:
     
     except Exception as e: print(f"\nError in Viz: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
-  def annotate(self, data):
+  def annotate(self, data, text, color='grey', offset=2, align='center'):
     ax = self.ax
-    x = 2102
-    ax.annotate('', xy=(x, data[0]), xytext=(x, data[-1]), arrowprops=dict(arrowstyle='-', color=self.palette['series'][1], lw=2))
-    ax.annotate('likely', xy=(x, data[1]), xytext=(x+2, data[1]), textcoords='data', ha='left', va='center', fontsize=12, color=self.palette['series'][0])
+    x = 2100+offset
+    label_y = (data[0]+data[-1])/2 if align=='center' else data[-1] -(data[-1]-data[0])/.1
+    ax.annotate('', xy=(x, data[0]), xytext=(x, data[-1]), arrowprops=dict(arrowstyle='-', color=color, lw=2))
+    ax.annotate(text, xy=(x, data[1]), xytext=(x+2, label_y), 
+      textcoords='data', ha='left', va=align, fontsize=12, color=self.palette['series'][0])
 
     plt.xlim(1850, x+10)
 

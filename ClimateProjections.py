@@ -87,7 +87,7 @@ def GlobalTemperature(drop_experiments=None):
         data = cleanUpData(data)
         data = normalize(data)
 
-        classify_models(data, models)
+        classify_models(data, models, observed_t)
 
         data = models_with_all_experiments(data, drop_experiments=drop_experiments, dont_count_historical=True)
         
@@ -100,7 +100,8 @@ def GlobalTemperature(drop_experiments=None):
 
         chart = visualizations.Charter(
             title=f'Global temperature projections ({len(model_set)} CMIP6 models)', 
-            zero=preindustrial_t, yticks=[0, 1.5, 2, 3], ylimit=[-1,4], reference_lines=[0, 2], yformat=lambda y, i: f"{'+' if y-preindustrial_t>0 else ''}{y-preindustrial_t:.1f} °C" 
+            zero=preindustrial_t, yticks=[0, 1.5, 2, 3], ylimit=[-1,4], reference_lines=[0, 2], 
+            yformat=lambda y, i: f"{'+' if y-preindustrial_t>0 else ''}{y-preindustrial_t:.1f} °C" 
             )
 
         chart.scatter(observed_t + preindustrial_t, label='measurements') # the observations are already relative to 1850-1900 preindustrial average
@@ -117,7 +118,7 @@ def GlobalTemperature(drop_experiments=None):
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=10)
 
 
-def classify_models(data, models):
+def classify_models(data, models, observed_t):
     data = data.sel(experiment = data.experiment.isin(['ssp245', 'historical'])) #data = models_with_all_experiments(data, keep_experiments=['ssp245', 'historical'], dont_count_historical=False)
     model_set = set(data.model.values.flat)
     preindustrial_t = preindustrial_temp(data)
@@ -125,17 +126,13 @@ def classify_models(data, models):
     not_hot_models = models[models['tcr'] <= 2.2]
     likely_models = not_hot_models[(not_hot_models['tcr'] >= 1.4)]
     not_hot_ecs_models = models[(models['ecs'] <= 4.5)]
-
+    hot_models = models[models['tcr'] > 2.2]
+    
     not_hot_data = data.sel(model = data.model.isin(not_hot_models['model'].values))
-    #chart.plot(quantiles(not_hot_data, [.5]), alpha=.6)
-
     likely_data = data.sel(model = data.model.isin(likely_models['model'].values))
-    quantile_ranges = quantiles(likely_data, (.1, .5, .9))
-
-
     not_hot_ecs_data = data.sel(model = data.model.isin(not_hot_ecs_models['model'].values))
-    #chart.plot(quantiles(not_hot_ecs_data, [.5]), alpha=.3)
-
+    hot_data = data.sel(model = data.model.isin(hot_models['model'].values))
+    
     m1 = models[models['model'].isin(model_set)]
     print(f"+{m1['tcr'].mean():.2f}° ⌀2100: ALL {len(m1)}× ")
     m2 = models[models['model'].isin(not_hot_data.model.values.flat)]
@@ -144,10 +141,6 @@ def classify_models(data, models):
     print(f"+{m3['tcr'].mean():.2f}° ⌀2100: LIKELY {len(m3)}× ")
     m4 = models[models['model'].isin(not_hot_ecs_data.model.values.flat)]
     print(f"+{m4['tcr'].mean():.2f}° ⌀2100: NOT HOT ECS {len(m4)}× ")
-
-
-    final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item(), quantile_ranges))
-    print("GRAND FINALE: ", final_t)
 
 
     #final_t_all = quantile_ranges[1].sel(experiment='ssp245').where(data['year'] > 2090, drop=True).mean().item() - preindustrial_t
@@ -159,34 +152,47 @@ def classify_models(data, models):
 
     hot_models = models[(models['tcr'] > 2.2)]['model'].values
 
-    chart = visualizations.Charter(title=f'Global temperature projections ({len(set(data.model.values.flat))} CMIP6 models)') #, reference_lines=[0, 2]
-    chart.plot(quantile_ranges, alpha=1)
-    chart.annotate(final_t)
+    chart = visualizations.Charter(
+        title=f'Global temperature projections ssp245 ({len(set(data.model.values.flat))} CMIP6 models)') #, reference_lines=[0, 2]
+    likely_range = quantiles(likely_data, (.1, .9))
+    hot_range = quantiles(hot_data, (.1, .9))
+    final_t = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item(), likely_range))
+    final_t_hot = list(map(lambda quantile: quantile.sel(year=slice(2090, 2100+1)).mean().item(), hot_range))
+    
+    print("GRAND FINALE (likely): ", final_t)
 
+    palette = chart.palette['coldhot']
+
+    chart.scatter(observed_t + preindustrial_t)
+
+    chart.plot(likely_range, alpha=1, linewidth=1, color=palette[1])
+    chart.annotate(final_t, 'likely', palette[1], offset=4)
+    chart.annotate(final_t_hot, 'hot\nmodels', palette[-1], align='top')
+
+
+    alpha = .3
     for model in data.model.values.flat:
-      if model in hot_models:
-        color = 'red' 
-      elif model in likely_models['model'].values: 
-        color = 'green'
-      else:
-        color = 'blue'
+        if model in hot_models: 
+            color = palette[-1]
+        elif model in likely_models['model'].values: 
+            color = palette[1]
+            alpha = .2
+        else: 
+            color = palette[0]
 
-      first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()
-      if first_decade_t >= .8:
-        print(f'{model} historical hot')
-        linewidth=1.3
-      elif first_decade_t <=-.6: 
-        print(f'{model} historical cold')
-        linewidth=1.3
-      else:
-        linewidth=.5
-      chart.plot([data.sel(model=model)], alpha=.4, color=color, linewidth=linewidth)
+        first_decade_t = data.sel(model=model, experiment='historical').where(data['year']<=1860, drop=True).mean().item()
+        
+        if first_decade_t >= .8: print(f'{model} historical hot')
+        elif first_decade_t <=-.6: print(f'{model} historical cold')
+        
+        
+        chart.plot([data.sel(model=model)], alpha=alpha, color=color, linewidth=.5)
     
     chart.show()
     chart.save(tag=f'all_classified')
 
   
-    # Temperature rise for models ordered by TCR
+    # Temperature rise for models sorted by TCR
     models = models.sort_values(by='tcr')
     for model in models['model']:
         try:
