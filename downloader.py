@@ -58,7 +58,7 @@ class Downloader:
         self.area = area
         subfolder = f'{variable}_{frequency}'
         if area:
-            subfolder += f'_{area}'
+            subfolder += f"_{'_'.join(map(str, area))}"
         self.DATADIR = os.path.join(self.DATADIR, subfolder, '')
 
     def list_files(self, pattern): 
@@ -109,8 +109,12 @@ class DownloaderCopernicus(Downloader):
         import cdsapi
         self.client = cdsapi.Client() # Doc: https://cds.climate.copernicus.eu/toolbox/doc/how-to/1_how_to_retrieve_data/1_how_to_retrieve_data.html
 
-    def download(self, models, experiments, variable='tas', frequency='mon', area=None, forecast_from=2015, start=1850, end=2100): 
+    def download(self, models, experiments, forecast_from=2015, start=1850, end=2100): 
         self.setup()
+        variable = self.variable
+        frequency=self.frequency
+        area = self.area
+        
         if not self.client: self.login()
 
         unavailable_experiments = self.status['unavailable_experiments'][variable] if self.skip_failing_scenarios else {}
@@ -231,6 +235,9 @@ class DownloaderESGF(Downloader):
 
     def download(self, models, experiments, variable='tas', frequency='mon', forecast_from=None, area=None):
         self.setup()
+        variable = self.variable
+        frequency=self.frequency
+        area = self.area
         if not self.lm.is_logged_on(): self.login()
 
         # TODO forecast_from & area not implemented yet
@@ -252,6 +259,7 @@ class DownloaderESGF(Downloader):
                                 'retracted': False, 'latest': True, # latest don't include retracted    
                                 'variable':variable, 'frequency': frequency, 'project': 'CMIP6'}
                             if area:
+                                raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
                                 params['bbox'] = area #bbox=[west, south, east, north]
 
                             if forecast_from: 
@@ -421,17 +429,14 @@ def main():
     # 'tas_Amon_CIESM_historical_r3i1p1f1_gr_185001-201412.nc'
     try:
         #show_server_certification_issuers(DownloaderESGF.servers[0])
-        #datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='wget', server=1) #wget|request
-        datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'))
-
-        datastore.download(["EC-Earth3-CC"], ['ssp245'], variable='tasmax', 
-            frequency='day',
-            area=[51, 12, 48, 18]
-            )    
+        #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'))
+        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='wget') #wget|request
+        datastore.set('tasmax', 'day', area=[51, 12, 48, 18]) # temperature above surface max
+        datastore.download(["EC-Earth3-CC"], ['ssp245'])
         #results = datastore.download(models, ['ssp126'])
 
-    except OpenSSL.SSL.Error: pass
-
+    except Exception as e:
+        print(f"\n{type(e).__name__}: {e}")
 
 if __name__ == "__main__":
     main()
