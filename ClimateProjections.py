@@ -53,32 +53,35 @@ YELLOW = '\033[33m'
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
-datastore = None
-#datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=True, mark_failing_scenarios=True)
-#mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
+#datastore = None
+datastore = downloader.DownloaderCopernicus(DATADIR) #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
+#datastore = downloader.DownloaderESGF(DATADIR, method='wget')
 
 experiments = list(scenarios['to-visualize'].keys())
 
 def main():
   GlobalTemperature()
-  #return maxTemperature(frequency='monthly')
-  #maxTemperature(frequency='daily')
-  #tropicDaysBuckets()
-  #return discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
+  #MaxTemperature(frequency='day')
+  #TropicDaysBuckets()
+  #return MaxTemperature(frequency='mon')
+  #return Discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
+
 
 # VISUALIZATIONS
 
 def GlobalTemperature(drop_experiments=None):
     variable = 'temperature'; 
-    global DATADIR; DATADIR = os.path.join(DATADIR, variable, ''); global experiments
+    global DATADIR; DATADIR = os.path.join(DATADIR, variable, '')
+
     try:
         models = pd.read_csv('metadata/models.csv')
         observed_t = load_observed_temperature()
         
         if datastore:
             datastore.DATADIR = DATADIR
+            datastore.set('tas', 'mon')
             datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
-        
+
         aggregate(var='tas')
         data = loadAggregated()
         
@@ -88,8 +91,10 @@ def GlobalTemperature(drop_experiments=None):
         data_all = data
 
         classify_models(data, models, observed_t)
-        while len(experiments)>=2:
-            data = models_with_all_experiments(data_all, keep_experiments=experiments, dont_count_historical=True)
+
+        experiments2plot = experiments[1:] + experiments[0:1]
+        while len(experiments2plot)>=2:
+            data = models_with_all_experiments(data_all, keep_experiments=experiments2plot, dont_count_historical=True)
             
             preindustrial_t = preindustrial_temp(data)
 
@@ -112,9 +117,9 @@ def GlobalTemperature(drop_experiments=None):
             chart.annotate_forecast(y=preindustrial_t)
 
             chart.show()
-            chart.save(tag=f'{variable}_{len(model_set)}_{"+".join(experiments)}')
+            chart.save(tag=f'{variable}_{len(model_set)}_{"+".join(experiments2plot)}')
 
-            experiments = experiments[0:1] + experiments[2:]
+            experiments2plot = experiments2plot[1:]
             
         return data
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
@@ -226,11 +231,11 @@ def classify_models(data, models, observed_t):
 
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
-def maxTemperature(frequency='daily'):
+def MaxTemperature(frequency='day'):
     variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+frequency, '')
+    
     try:
         models = pd.read_csv('metadata/models.csv')
-
         observed_max_t = load_observed_max_temperature()
 
         if datastore:
@@ -249,6 +254,7 @@ def maxTemperature(frequency='daily'):
         quantile_ranges = quantiles(data, (.1, .5, .9))
         maxes = {'Madrid': 35}
 
+        #model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
         model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
         chart = visualizations.Charter(
@@ -299,8 +305,8 @@ def load_observed_tropic_days():
     observed_tropic_days_annually = max_daily.groupby('Year')['tropic_days'].sum()
     return observed_tropic_days_annually
 
-def tropicDaysBuckets():
-    variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+'daily', '')
+def TropicDaysBuckets():
+    variable = 'max_temperature'; global DATADIR; DATADIR = os.path.join(DATADIR, variable+'_'+'day', '')
     try:
         models = pd.read_csv('metadata/models.csv')
 
@@ -308,7 +314,7 @@ def tropicDaysBuckets():
             
         if datastore:
             datastore.DATADIR = DATADIR
-            datastore.download(models['model'].values, ['ssp245', 'historical'], variable='tasmax', forecast_from=forecast_from,frequency='daily', #variable=f'daily_maximum_near_surface_air_temperature', 
+            datastore.download(models['model'].values, ['ssp245', 'historical'], variable='tasmax', forecast_from=forecast_from, frequency='day', #variable=f'daily_maximum_near_surface_air_temperature', 
                 area=md['area']['cz'])
       
         aggregate(var='tasmax', stacked=True) 
@@ -356,13 +362,13 @@ def tropic_months(observed_maxes, threshold=30):
     print(months)
     return months
 
-def discovery():
+def Discovery():
     variable = 'discovery'; global DATADIR; DATADIR = DATADIR + variable + '/'
 
     datastore = downloader.DownloaderCopernicus(DATADIR, skip_failing_scenarios=False, mark_failing_scenarios=True)
     datastore.download(
       ['canesm5'], ['ssp245'], 
-      variable='surface_temperature', frequency='monthly', #variable='daily_maximum_near_surface_air_temperature', frequency='daily',#area=md['area']['cz'],
+      variable='surface_temperature', frequency='mon', #variable='daily_maximum_near_surface_air_temperature', frequency='day',#area=md['area']['cz'],
       start=2020,forecast_from=2020,end=2030)
     
     aggregate(var='tas')
@@ -591,6 +597,8 @@ def cleanUpData(data):
 
 def normalize(data, measurements=None, period=20):
     try:
+        
+        # it will drop models without historical experiment
 
         if measurements: # normalize to overlapping period if we have measurements
             last_measurement = measurements.index[-1]
@@ -599,7 +607,7 @@ def normalize(data, measurements=None, period=20):
             print(f'{len(overlap)} years overlap since {last_measurement} to {measurements.index[-1]}')
 
             model_mean = data.sel(experiment='historical').sel(year=slice(last_measurement-len(overlap), last_measurement+1)).mean(dim='year')
-            global_mean = model_mean.mean(dim='model').item()
+            #global_mean = model_mean.mean(dim='model').item()
             normalization_offset = model_mean - measured_mean
 
         else: # normalize to last 2 decades of hindcast if we don't have measurements
