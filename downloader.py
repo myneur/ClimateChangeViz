@@ -233,14 +233,75 @@ class DownloaderESGF(Downloader):
     def logoff(self):
         self.lm.logoff()
 
-    def download(self, models, experiments, variable='tas', frequency='mon', forecast_from=None, area=None):
+
+    def search(self, model, experiment, forecast_from=None, area=None, variable=None, frequency=None):
+        
         self.setup()
-        variable = self.variable
-        frequency=self.frequency
-        area = self.area
+        variable = variable if variable else self.variable
+        frequency = frequency if frequency else self.frequency
+        area = area if area else self.area
         if not self.lm.is_logged_on(): self.login()
 
+        print(f'Searching for {variable} {frequency} {model} {experiment} {area}')
+
+        for attempt in range(self.max_tries):
+            try:
+                print(f'Try {attempt} {model} {experiment}', end='\r')
+                results = []
+                params = {
+                    'facets': 'data_node,variant_label,version', 
+                    'retracted': False, 'latest': True, # latest don't include retracted    
+                    'variable':variable, 'frequency': frequency, 'project': 'CMIP6'}
+                if model: params['source_id'] = model
+                else: params['facets'] += ',source_id'
+                if experiment: params['experiment_id'] = experiment
+                else: params['facets'] += ',experiment_id'
+
+                if area:
+                    raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
+                    params['bbox'] = area #bbox=[west, south, east, north]
+
+                if forecast_from: # not implemented yet
+                    pass
+                    #print(f'{RED}Datum constraint not implemented for ESGF yet{RESET}')
+                    #start="2100-12-30T23:23:59Z", to_timestamp="2200-01-01T00:00:00Z",
+                    
+                context = self.connection.new_context(**params)
+                print()
+                # Show what variants are available
+                # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
+                print(', '.join([f'{facet}: {counts}' for facet, counts in context.facet_counts.items() if facet == 'data_node']))
+                
+                print(f'Found {context.hit_count}× {model} {experiment}')
+                
+                return context
+
+            except requests.exceptions.Timeout as e:
+                if attempt < self.max_tries:
+                    print(f"Timeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
+                    time.sleep(self.retry_delay)
+                else:
+                    print(f'❌ download search failed {model} {experiment}: Timeout'); 
+                    return []
+            except (requests.exceptions.RequestException, Exception) as e:
+                print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
+                return []
+
+    def models_available_for(self, experiment):
+        context = self.search(None, [experiment])
+        if context.hit_count:
+            for facet, counts in context.facet_counts.items():
+                if counts and facet in ('source_id'):
+                    return counts
+                    
+        else: return {}
+
+
+    def download(self, models, experiments, forecast_from=None, area=None):
         # TODO forecast_from & area not implemented yet
+        variable = self.variable
+        frequency = self.frequency
+        area = self.area
 
         print(f"{BLUE}Downloading {BOLD}{models} {experiments}{RESET}")
         existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
@@ -249,45 +310,12 @@ class DownloaderESGF(Downloader):
             for experiment in experiments:
                 downloaded = False
                 if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
-                    for attempt in range(self.max_tries):
-                        try:
-                            print(f'Try {attempt} {model} {experiment}', end='\r')
-                            results = []
-                            params = {
-                                'facets': 'variant_label,version,data_node', 
-                                'source_id': model, 'experiment_id': experiment, 
-                                'retracted': False, 'latest': True, # latest don't include retracted    
-                                'variable':variable, 'frequency': frequency, 'project': 'CMIP6'}
-                            if area:
-                                raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
-                                params['bbox'] = area #bbox=[west, south, east, north]
-
-                            if forecast_from: 
-                                pass
-                                #print(f'{RED}Datum constraint not implemented for ESGF yet{RESET}')
-                                #start="2100-12-30T23:23:59Z", to_timestamp="2200-01-01T00:00:00Z",
-                                
-                            context = self.connection.new_context(**params)
-                            print()
-                            # Show what variants are available
-                            # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
-                            print(', '.join([f'{facet}: {counts}' for facet, counts in context.facet_counts.items() if facet == 'data_node']))
-                            
-                            print(f'Found {model} {experiment}: {context.hit_count}×')
-                            results = context.search()
-                            break
-                        except requests.exceptions.Timeout as e:
-                            if attempt < self.max_tries:
-                                print(f"Timeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
-                                time.sleep(self.retry_delay)
-                            else:
-                                print(f'❌ download search failed {model} {experiment}: Timeout'); 
-                                break
-                        except (requests.exceptions.RequestException, Exception) as e:
-                            print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
-                            break
-                      
-                    if(len(results)):
+                    
+                    context = self.search(model, experiment, forecast_from=forecast_from, area=area)  
+                    # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
+                    
+                    if(context.hit_count):
+                        results = context.search()
                         print(f'{BLUE}⬇{RESET} downloading {results[0].dataset_id}')
                         #results = sorted(results, key=self.splitByNums, reverse=True) 
 
@@ -431,12 +459,19 @@ def main():
         #show_server_certification_issuers(DownloaderESGF.servers[0])
         #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'))
         datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='wget') #wget|request
-        datastore.set('tasmax', 'day', area=[51, 12, 48, 18]) # temperature above surface max
-        datastore.download(["EC-Earth3-CC"], ['ssp245'])
+        datastore.set(
+            #area=[51, 12, 48, 18], # not supported yet
+            'tasmax', 'day') # temperature above surface max
+        
+        os.environ['ESGF_PYCLIENT_NO_FACETS_STAR_WARNING'] = '1'
+
+        print(datastore.models_available_for('ssp245'))
+
+        #datastore.download(["EC-Earth3-CC"], ['ssp245'])
         #results = datastore.download(models, ['ssp126'])
 
     except Exception as e:
-        print(f"\n{type(e).__name__}: {e}")
+        print(f"\n{type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
 if __name__ == "__main__":
     main()
