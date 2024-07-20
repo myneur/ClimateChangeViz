@@ -258,8 +258,9 @@ class DownloaderESGF(Downloader):
                 else: params['facets'] += ',experiment_id'
 
                 if area:
-                    raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
-                    params['bbox'] = area #bbox=[west, south, east, north]
+                    #raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
+                    print("Warnging: Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus if possible.")
+                    params['bbox'] = area #bbox=[W,S,E,N] for ESGF [N,W,S,E] for Copernicus
 
                 if forecast_from: # not implemented yet
                     pass
@@ -282,10 +283,10 @@ class DownloaderESGF(Downloader):
                     time.sleep(self.retry_delay)
                 else:
                     print(f'❌ download search failed {model} {experiment}: Timeout'); 
-                    return []
+                    return {'hit_count': 0}
             except (requests.exceptions.RequestException, Exception) as e:
                 print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
-                return []
+                return {'hit_count': 0}
 
     def models_available_for(self, experiment):
         context = self.search(None, [experiment])

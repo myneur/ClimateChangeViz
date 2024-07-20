@@ -227,7 +227,7 @@ def MaxTemperature(frequency='day'):
         observed_max_t = load_observed_max_temperature()
 
         datastore.set('tasmax', frequency, area=md['area']['cz']) # temperature above surface max
-        datastore.download(models['model'].values, ['ssp245', 'historical'], forecast_from=forecast_from)    
+        datastore.download(models['model'].values[:1], ['ssp245', 'historical'], forecast_from=forecast_from)    
 
         aggregate(var='tasmax')
         data = loadAggregated(wildcard='tasmax_')
@@ -297,14 +297,14 @@ def TropicDaysBuckets():
         observed_tropic_days_annually = load_observed_tropic_days()
         
         datastore.set('tasmax', 'day', area=md['area']['cz']) # temperature above surface max
-        datastore.download(models['model'].values, ['ssp245', 'historical'],  forecast_from=forecast_from) #variable=f'daily_maximum_near_surface_air_temperature')
+        #datastore.download(models['model'].values, ['ssp245', 'historical'],  forecast_from=forecast_from) #variable=f'daily_maximum_near_surface_air_temperature')
       
         aggregate(var='tasmax', stacked=True) 
         data = loadAggregated(wildcard='tasmaxbuckets_')
 
         data = cleanUpData(data)
         #data = normalize(data) # TO REVIEW: should we normalize max the same way like avg? 
-        data = models_with_all_experiments(data, dont_count_historical=True)
+        #data = models_with_all_experiments(data, dont_count_historical=True)
 
         model_set = set(data.sel(experiment='ssp245').dropna(dim='model', how='all').model.values.flat)
 
@@ -393,22 +393,41 @@ def quantiles(data, quantiles):
   quantilized = xr.concat([data.quantile(q, dim='model') for q in quantiles], dim='quantile')
   quantilized['quantile'] = quantiles  # name coordinates
 
-def create_buckets(da_agg):
-  t30 = ((da_agg >= (30+K)) & (da_agg < (35+K))).resample(time='YE').sum(dim='time')
-  t35 = (da_agg >= (35+K)).resample(time='YE').sum(dim='time') # t35 = ((da_agg >= (35+K)) & (da_agg < np.inf)).resample(time='YE').sum(dim='time')
-  da_yr = xr.Dataset(
+def create_buckets(data):
+  t30 = ((data >= (30+K)) & (data < (35+K))).resample(time='YE').sum(dim='time')
+  t35 = (data >= (35+K)).resample(time='YE').sum(dim='time') # t35 = ((data >= (35+K)) & (data < np.inf)).resample(time='YE').sum(dim='time')
+  buckets = xr.Dataset(
     {'bucket': (('bins', 'time'), [t30, t35])},
     coords={'bins': ['30-35', '35+'],'time': t30.time})
 
-  da_yr = da_yr.assign_coords(year=da_yr['time'].dt.year)
-  da_yr = da_yr.drop_vars('time')
-  da_yr = da_yr.rename({'time': 'year'})
+  buckets = buckets.assign_coords(year=buckets['time'].dt.year)
+  buckets = buckets.drop_vars('time')
+  buckets = buckets.rename({'time': 'year'})
 
-  return da_yr
+  return buckets
+
+def model_coverage(data, lat, lon, tolerance=None):
+    area = [data[lat].max().item(), data[lon].min().item(), data[lat].min().item(), data[lon].max().item()]
+    if tolerance:
+        area = [area[0]+tolerance[0], area[1]-tolerance[1], area[2]-tolerance[0], area[3]+tolerance[1]]
+    return area
+
+def add_params(data, lat, lon, area):
+    coverage = model_coverage(data, lat, lon)
+    points = [data[lat].size, data[lon].size]
+    resolution = [(coverage[0]-coverage[2])/points[0], (coverage[3]-coverage[1])/points[1]]
+    data.attrs['coverage'] = coverage
+    data.attrs['points'] = points
+    data.attrs['resolution'] = resolution
+    if area:
+        # grow area so points nearer than half resolution will fit in
+        areaTolerance = model_coverage(data, lat, lon, tolerance=[resolution[0]/2, resolution[1]/2])
+        data.attrs['areaTolerance'] = areaTolerance
+    return data 
 
 
 K = 273.15 # Kelvins
-def aggregate_file(filename, var='tas', buckets=None, area=None):
+def aggregate_file(filename, var='tas', buckets=None, area=None, verbose=False): # [N,W,S,E] area
     var_aggregated = var if not buckets else var+'buckets'
     try:
         ds = xr.open_dataset(f'{datastore.DATADIR}{filename}')
@@ -421,57 +440,74 @@ def aggregate_file(filename, var='tas', buckets=None, area=None):
         else: lat, lon = 'latitude', 'longitude'
         
         # Narrow to selected variable
-        
-        da = ds[var] 
-        if 'height' in da.coords:
-            da = da.drop_vars('height')
+        data = ds[var] 
+        if 'height' in data.coords:
+            data = data.drop_vars('height')
 
+        # Model spatial details about 
+        data = add_params(data, lat, lon, area)
+        
         # filter within area
+        #print(data.attrs)
         if area: 
+            # area growed by half resolution
             if len(area)>3:
-                da.sel({lat: slice(area[0], area[2]), lon: slice(area[1], area[3])})# N-S # W-E
+                tolerance = data.attrs['areaTolerance']
+                cover = data.attrs['coverage']
+                if(cover[0]>tolerance[0] or cover[1]<tolerance[1] or cover[2]<tolerance[2] or cover[3]>tolerance[3]):
+                    print(cover, area)
+                    print((cover[0]>area[0] , cover[1]<area[1] , cover[2]<area[2] , cover[3]>area[3]))
+                    if verbose: print('s', end='')
+                    data = data.sel({lat: slice(area[2], area[0]), lon: slice(area[1], area[3])})# S-N # W-E
             else:
-                da.sel({lat: lat_value, lon: lon_value}, method='nearest')
+                if verbose: print('s', end='')
+                data = data.sel({lat: lat_value, lon: lon_value}, method='nearest')
+            data.attrs['coverage_constrained'] = model_coverage(data, lat, lon)
+        else:
+            if verbose: print('.', end='')
         
         # AGGREGATE SPATIALLY
         
         # MAX
         if var == 'tasmax':
-            da_agg = da.max([lat, lon])
+            global_agg = data.max([lat, lon])
         
         # AVG
         else:
             # Weight as longitude gird shrinks with latitude
-            weights = np.cos(np.deg2rad(da[lat]))
+            weights = np.cos(np.deg2rad(data[lat]))
             weights.name = "weights"
-            da_weighted = da.weighted(weights)
-            da_agg = da_weighted.mean([lat, lon])
+            data_weighted = data.weighted(weights)
+            global_agg = data_weighted.mean([lat, lon])
 
         # AGGREGATE TIME
 
         if buckets:
-            da_yr = create_buckets(da_agg)
+            year_agg = create_buckets(global_agg)
         else:
             # MAX
             if 'max' in var:
-                da_yr = da_agg.groupby('time.year').max()
+                year_agg = global_agg.groupby('time.year').max()
 
             # AVG
             else: 
-                da_yr = da_agg.groupby('time.year').mean()
+                year_agg = global_agg.groupby('time.year').mean()
 
-            da_yr = da_yr - K # °C
+            year_agg = year_agg - K # °C
         
         # CONTEXT
-        da_yr = da_yr.assign_coords(model=mod)
-        da_yr = da_yr.expand_dims('model')
-        da_yr = da_yr.assign_coords(experiment=exp)
-        da_yr = da_yr.expand_dims('experiment')
-        #ds.attrs['height'] = ...
+        year_agg = year_agg.assign_coords(model=mod)
+        year_agg = year_agg.expand_dims('model')
+        year_agg = year_agg.assign_coords(experiment=exp)
+        year_agg = year_agg.expand_dims('experiment')
+        for attr in data.attrs.keys():
+            year_agg.attrs[attr] = data.attrs[attr]
 
         # SAVE
         model, experiment, run, grid, time = filename.split('_')[2:7] #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
-        da_yr.to_netcdf(path=os.path.join(datastore.DATADIR, f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}.nc'))  #da_yr.to_netcdf(path=f'{datastore.DATADIR}cmip6_agg_{exp}_{mod}_{str(da_yr.year[0].values)}.nc')
+        year_agg.to_netcdf(path=os.path.join(datastore.DATADIR, f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}.nc'))  #year_agg.to_netcdf(path=f'{datastore.DATADIR}cmip6_agg_{exp}_{mod}_{str(year_agg.year[0].values)}.nc')
+
+        return year_agg
 
     #except OSError as e: print(f"\n{RED}Error loading model:{RESET} {type(e).__name__}: {e}")
     except Exception as e: print(f"\n{RED}Error aggregating {filename}:{RESET} {type(e).__name__}: {e}"); traceback.print_exc()
@@ -487,8 +523,8 @@ def aggregate(stacked=None, var='tas'):
           candidate_files = [f for f in os.listdir(datastore.DATADIR) if f.startswith(f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}')] 
           # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
           if reaggregate or not len(candidate_files):
-              print('.', end='')
-              aggregate_file(filename, var=var, buckets=stacked)
+              aggregate_file(filename, var=var, buckets=stacked, area=datastore.area)
+              #data = aggregate_file(filename, var=var, buckets=stacked)
 
       except Exception as e: print(f"{RED}Error in {filename}: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=1)
     print()

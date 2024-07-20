@@ -96,7 +96,7 @@ Downloading is tricky, because not all models are available on all servers.
 
 - DownloaderCopernicus is easier to start with, but more models are missing there. 
 - DownloaderESGF has more models, but can be hard to tame. It might be necessary to add trusted certificates (an error suggests how) or toggle between `method='wget'` and `method='request'` (example in downloader.py main()) when the method is unable to download a particular model. Also, sometimes a server timeouts. It works, but it probably will be necessary to run it multiple times. Somebody is welcome to contribute by making it more robust.
-Plus at this point the ESGF library used seems not to be able to limit data by geographic coordinates. 
+Plus at this point the ESGF python library does not limit data by geographic coordinates, which makes it cumbersome for huge daily models. 
 
 If you break the download in the process, remove unfinished files not to have holes in the data. One serie is sometimes split into multiple files, so all files with the last ssp experiment and model names are recommended to be deleted in such case to make downloader redownload it.
 
