@@ -49,14 +49,15 @@ RED = '\033[91m'; RESET = "\033[0m"; YELLOW = '\033[33m'
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
-datastore = downloader.DownloaderCopernicus(DATADIR) #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
+#datastore = downloader.DownloaderCopernicus(DATADIR) #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
 #datastore = downloader.DownloaderESGF(DATADIR, method='request') # method='wget' | method='request'
+datastore = downloader.DownloaderESGF(DATADIR, method='wget') # method='wget' | method='request'
 
 experiments = list(scenarios['to-visualize'].keys())
 
 def main():
-  GlobalTemperature()
-  #MaxTemperature()
+  #GlobalTemperature()
+  MaxTemperature()
   #TropicDaysBuckets()
   #return MaxTemperature(frequency='mon')
   #return Discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
@@ -224,13 +225,18 @@ def classify_models(data, models, observed_t):
 def MaxTemperature(frequency='day'):
     try:
         models = pd.read_csv('metadata/models.csv')
+
+        models_validated = models[models['Europe-accuracy'] == 1]
+
+        model_names = list(models_validated['model'].values)
+
         observed_max_t = load_observed_max_temperature()
 
         datastore.set('tasmax', frequency, area=md['area']['cz']) # temperature above surface max
-        datastore.download(models['model'].values[:1], ['ssp245', 'historical'], forecast_from=forecast_from)    
+        datastore.download(model_names, ['ssp245', 'historical'], forecast_from=forecast_from)    
 
         aggregate(var='tasmax')
-        data = loadAggregated(wildcard='tasmax_')
+        data = loadAggregated(wildcard='tasmax_', models=model_names)
 
         data = cleanUpData(data)
         #data = models_with_all_experiments(data, dont_count_historical=True)
@@ -294,13 +300,17 @@ def load_observed_tropic_days():
 def TropicDaysBuckets():
     try:
         models = pd.read_csv('metadata/models.csv')
+        
+        models_validated = models[models['Europe-accuracy'] == 1]
+        model_names = list(models_validated['model'].values)
+
         observed_tropic_days_annually = load_observed_tropic_days()
         
         datastore.set('tasmax', 'day', area=md['area']['cz']) # temperature above surface max
-        #datastore.download(models['model'].values, ['ssp245', 'historical'],  forecast_from=forecast_from) #variable=f'daily_maximum_near_surface_air_temperature')
+        #datastore.download(model_names, ['ssp245', 'historical'],  forecast_from=forecast_from) #variable=f'daily_maximum_near_surface_air_temperature')
       
         aggregate(var='tasmax', stacked=True) 
-        data = loadAggregated(wildcard='tasmaxbuckets_')
+        data = loadAggregated(wildcard='tasmaxbuckets_', models=model_names)
 
         data = cleanUpData(data)
         #data = normalize(data) # TO REVIEW: should we normalize max the same way like avg? 
@@ -320,6 +330,13 @@ def TropicDaysBuckets():
         chart.scatter(observed_tropic_days_annually, label='Observed 30+ °C') # expects year as index
         chart.show()
         chart.save(tag=f'tropic_days_{len(model_set)}')
+
+        tropic_days = data.sum(dim='bins')
+
+        #chart = visualizations.Charter(title=f'Tropic days ({len(model_set)} CMIP6 models)') 
+        #chart.scatter(observed_tropic_days_annually, label='measurements')
+        #chart.plot([tropic_days], series=None, alpha=1, linewidth=1, color=palette[1])
+        #chart.show()
 
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc()
@@ -504,7 +521,7 @@ def aggregate_file(filename, var='tas', buckets=None, area=None, verbose=False):
             year_agg.attrs[attr] = data.attrs[attr]
 
         # SAVE
-        model, experiment, run, grid, time = filename.split('_')[2:7] #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
+        model, experiment, run, grid, time = filename.split('.')[0].split('_')[2:7] #<variable_id>_<table_id>_<source_id>_<experiment_id>_<variant_label>_<grid_label>_<time_range>.nc
         year_agg.to_netcdf(path=os.path.join(datastore.DATADIR, f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}.nc'))  #year_agg.to_netcdf(path=f'{datastore.DATADIR}cmip6_agg_{exp}_{mod}_{str(year_agg.year[0].values)}.nc')
 
         return year_agg
@@ -523,7 +540,7 @@ def aggregate(stacked=None, var='tas'):
           candidate_files = [f for f in os.listdir(datastore.DATADIR) if f.startswith(f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}')] 
           # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
           if reaggregate or not len(candidate_files):
-              aggregate_file(filename, var=var, buckets=stacked, area=datastore.area)
+              aggregate_file(filename, var=var, buckets=stacked, area=datastore.area, verbose=True)
               #data = aggregate_file(filename, var=var, buckets=stacked)
 
       except Exception as e: print(f"{RED}Error in {filename}: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=1)
@@ -532,10 +549,14 @@ def aggregate(stacked=None, var='tas'):
 def loadAggregated(models=None, experiments=None, unavailable_experiments=None, wildcard=''):
     filename_pattern = os.path.join(datastore.DATADIR, f'agg_*{wildcard}*.nc')
     
-    filenames = glob(filename_pattern)
+    pathnames = glob(filename_pattern)
+
+    if models:
+        pathnames = [name for name in pathnames if any(model in name for model in models)]
+
     duplicites = {}
-    for filename in filenames: 
-        filename = filename.split('/')[-1]
+    for pathname in pathnames: 
+        filename = pathname.split('/')[-1]
         
         var, model, experiment, variant, grid, time = filename.split('_')[1:7]
         key = f'{var}_{model}_{experiment}_{time}'
@@ -548,7 +569,7 @@ def loadAggregated(models=None, experiments=None, unavailable_experiments=None, 
 
     print('Opening aggregations')
     data_ds = None
-    data_ds = xr.open_mfdataset(filename_pattern, combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{datastore.DATADIR}cmip6_agg_*.nc')
+    data_ds = xr.open_mfdataset(pathnames, combine='nested', concat_dim='model') # when problems with loading # data_ds = xr.open_mfdataset(f'{datastore.DATADIR}cmip6_agg_*.nc')
     data_ds.load()
 
 

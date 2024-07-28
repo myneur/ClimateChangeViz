@@ -173,14 +173,26 @@ class DownloaderCopernicus(Downloader):
 
         return unavailable_experiments
 
-    def reanalysis(self): # retrieve historical measurementss
+    def reanalysis(self, variable='mean_temperature'): # retrieve historical measurementss
         raise NotImplementedError
+
         self.client.retrieve('reanalysis-era5-single-levels', {
             'product_type': 'reanalysis', 
             'variable': '2m_temperature'
             #'year': list(range(1910,1918+1)),
             #'area': [51, 12, 48, 18]
             })
+
+        # OR https://cds.climate.copernicus.eu/cdsapp#!/dataset/insitu-gridded-observations-europe?tab=form used by  https://www.climrisk.cz/o-projektu/
+
+        self.client.retrieve('insitu-gridded-observations-europe', {
+                'format': 'zip',
+                'variable': 'maximum_temperature',
+                'period': 'full_period',
+                'product_type': 'ensemble_mean',
+                'grid_resolution': '0.25deg',
+                'version': '29.0e'},
+            'download.zip')
 
 
 class DownloaderESGF(Downloader):
