@@ -131,10 +131,9 @@ class DownloaderCopernicus(Downloader):
                 var = 'tasmax' if 'max' in variable else 'tas'
                 if not self.skip_failing_scenarios or (experiment not in unavailable_experiments or not (model in unavailable_experiments[experiment])):
                     try:
-                        files = self.list_files(f'*{var}*_{model}_{experiment}*')
                         filename = os.path.join(self.DATADIR, f'{var}_A{frequency[:3]}_{model}_{experiment}_{start}-{end}.{self.fileformat}')
 
-                        if not files:
+                        if not self.list_files(f'*{var}*_{model}_{experiment}*'):
                             params = {'format': self.fileformat,
                                 'temporal_resolution': frequency,
                                 'experiment': f'{experiment}',
@@ -317,12 +316,13 @@ class DownloaderESGF(Downloader):
         area = self.area
 
         print(f"{BLUE}Downloading {BOLD}{models} {experiments}{RESET}")
-        existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
+        #existing_files = [os.path.basename(file) for file in self.list_files('*.nc')]
         
         for model in models:
             for experiment in experiments:
                 downloaded = False
-                if not self.file_in_list(existing_files, f'{variable}*_{model}_{experiment}*.nc'):
+                
+                if not self.list_files(f'*{variable}*_{model}_{experiment}*'):
                     
                     context = self.search(model, experiment, forecast_from=forecast_from, area=area)  
                     # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
@@ -392,7 +392,7 @@ class DownloaderESGF(Downloader):
                     if progress%(100*chunk) == 0:
                         #print('.', end='')
                         if size > 0:
-                          print(f"Downloaded: {int(progress/size)}%", end='\r')
+                          print(f"Downloaded: {int(progress/size*100)}%", end='\r')
             return True
         return False
 
@@ -434,9 +434,6 @@ class DownloaderESGF(Downloader):
             if not removed: 
                 return True
         return False
-
-    def list_files(self, pattern):
-      return glob.glob(os.path.join(self.DATADIR, pattern))
 
     def file_in_list(self, files, pattern):
       return [file for file in files if fnmatch.fnmatch(file, pattern)]
