@@ -376,36 +376,39 @@ class DownloaderESGF(Downloader):
                 print(f"{'✅ Downloaded' if downloaded else '❌ Download failed'} {model} {experiment}")
         return downloaded
 
-    def downloadRequest(self, url):
-        filename = url.split('/')[-1]
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            if 'Content-Length' in response.headers:
-                size = float(response.headers['Content-Length'])
-                print(f"{size/1000000:.2f} MB")
-            with open(os.path.join(self.DATADIR, filename), 'wb') as f:
-                progress = 0
-                chunk = 8192
-                for data in response.iter_content(chunk_size=chunk):
-                    f.write(data)
-                    progress += chunk
-                    if progress%(100*chunk) == 0:
-                        #print('.', end='')
-                        if size > 0:
-                          print(f"Downloaded: {int(progress/size*100)}%", end='\r')
-            return True
-        return False
-
     def downloadUrl(self, url):
         print(f'{BLUE}⬇{RESET} downloading {url}')
+        filename = url.split('/')[-1]
+        
+        chunk = 8192
+        retry_delay = self.retry_delay
+
         for attempt in range(self.max_tries):
             try:
-                return self.downloadRequest(url)
+                response = requests.get(url, stream=True)
+                if response.status_code == 200:
+                    if 'Content-Length' in response.headers:
+                        size = float(response.headers['Content-Length'])
+                        print(f"{size/1000000:.2f} MB")
+                    with open(os.path.join(self.DATADIR, filename), 'wb') as f:
+                        progress = 0
+                        for data in response.iter_content(chunk_size=chunk):
+                            f.write(data)
+                            progress += chunk
+                            if progress%(100*chunk) == 0: 
+                                if size: print(f"Downloaded: {int(progress/size*100)}%", end='\r')
+                    return True
+                return False
+
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 if attempt < self.max_tries:
-                    print(f"Timeout. Retrying download in {self.retry_delay} s:\n{type(e).__name__}: {e}")
-                    time.sleep(self.retry_delay)
-                    self.downloadUrl(url)
+                    
+                    #retry_after = response.headers.get('Retry-After')
+                    #if retry_after: print("Suggested retry period: ", int(retry_after))
+                    print(f"Timeout. Retrying download in {retry_delay} s:\n{type(e).__name__}: {e}")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+
                 else:
                     print(f'❌ max retries')
                     return False
