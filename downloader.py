@@ -59,7 +59,7 @@ class Downloader:
         subfolder = f'{variable}_{frequency}'
         if area:
             subfolder += f"_{'_'.join(map(str, area))}"
-        self.DATADIR = os.path.join(self.DATADIR, subfolder, '')
+        self.DATADIR = os.path.join(self._parent, subfolder, '')
 
     def list_files(self, pattern): 
         return glob.glob(os.path.join(self.DATADIR, pattern))
@@ -355,11 +355,11 @@ class DownloaderESGF(Downloader):
                                         downloaded = self.downloadUrl(file.download_url)
                                     
                                     if downloaded:
-                                        break
+                                        continue
                                 else:
                                   if self.downloadWget(result, model, experiment, variable): 
                                     downloaded = True
-                                    break
+                                    continue
                             # TODO when we group by server, we should switch server here #except requests.exceptions.ConnectionError as e: print(f"❌ server {server} Timeout: {type(e).__name__}: {e}")
                                 # ConnectionError: HTTPConnectionPool(host='{data_node}', port=80): Max retries exceeded with url: /thredds/fileServer/{filepathname} (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at {object}>: Failed to establish a new connection: [Errno 60] Operation timed out'))
                                 
