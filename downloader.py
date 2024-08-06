@@ -1,5 +1,6 @@
 import util
 import os
+import sys
 import json
 import fnmatch
 import glob
@@ -33,6 +34,8 @@ def run_once(f):
 class Downloader:
     def __init__(self, DATADIR, mark_failing_scenarios=False, skip_failing_scenarios=False, forecast_from=None, start=None, end=None, fileformat='zip'): 
         self._parent = self.DATADIR = DATADIR
+        self.max_tries = 7
+        self.retry_delay = 60
         self.fileformat=fileformat
         self.skip_failing_scenarios = skip_failing_scenarios
         self.mark_failing_scenarios = mark_failing_scenarios
@@ -207,8 +210,6 @@ class DownloaderESGF(Downloader):
 
     def __init__(self, DATADIR, server=0, method='wget', fileformat='nc', mark_failing_scenarios=False, skip_failing_scenarios=False):
         super().__init__(DATADIR, fileformat=fileformat, mark_failing_scenarios=mark_failing_scenarios, skip_failing_scenarios=skip_failing_scenarios)
-        self.max_tries = 5
-        self.retry_delay = 10
         self.current_server = server%len(self.servers)
         self.downloadMethod = method
 
@@ -223,6 +224,8 @@ class DownloaderESGF(Downloader):
         # https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html
         #os.environ['ESGF_PYCLIENT_NO_FACETS_STAR_WARNING'] = '1'
         self.trustCertificate()
+        if 'silent' in sys.argv: 
+            os.environ['ESGF_PYCLIENT_NO_FACETS_STAR_WARNING'] = '1'
         
     def trustCertificate(self): # certificates we trust on top of the system-wise
         os.environ['REQUESTS_CA_BUNDLE'] = 'trusted-certificates.pem'
@@ -253,51 +256,50 @@ class DownloaderESGF(Downloader):
         area = area if area else self.area
         if not self.lm.is_logged_on(): self.login()
 
-        print(f'Searching for {variable} {frequency} {model} {experiment} {area}')
+        print(f"Searching for {variable} {frequency} {model} {experiment} {area if area else ''}")
 
+        params = {
+            'facets': 'data_node,variant_label,version', 
+            'retracted': False, 'latest': True, # latest don't include retracted    
+            'variable':variable, 'frequency': frequency, 'project': 'CMIP6'}
+        if model: params['source_id'] = model
+        else: params['facets'] += ',source_id'
+        if experiment: params['experiment_id'] = experiment
+        else: params['facets'] += ',experiment_id'
+
+        if area:
+            #raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
+            print("Warning: Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus if possible.")
+            params['bbox'] = area #bbox=[W,S,E,N] for ESGF [N,W,S,E] for Copernicus
+
+        if forecast_from: # not implemented yet
+            pass
+            #print(f'{RED}Datum constraint not implemented for ESGF yet{RESET}')
+            #start="2100-12-30T23:23:59Z", to_timestamp="2200-01-01T00:00:00Z",
+
+        retry_delay = self.retry_delay
         for attempt in range(self.max_tries):
             try:
-                print(f'Try {attempt} {model} {experiment}', end='\r')
-                results = []
-                params = {
-                    'facets': 'data_node,variant_label,version', 
-                    'retracted': False, 'latest': True, # latest don't include retracted    
-                    'variable':variable, 'frequency': frequency, 'project': 'CMIP6'}
-                if model: params['source_id'] = model
-                else: params['facets'] += ',source_id'
-                if experiment: params['experiment_id'] = experiment
-                else: params['facets'] += ',experiment_id'
-
-                if area:
-                    #raise NotImplementedError("Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus")
-                    print("Warnging: Area constraint is not implemented by DownloaderESGF yet, use DownloaderCopernicus if possible.")
-                    params['bbox'] = area #bbox=[W,S,E,N] for ESGF [N,W,S,E] for Copernicus
-
-                if forecast_from: # not implemented yet
-                    pass
-                    #print(f'{RED}Datum constraint not implemented for ESGF yet{RESET}')
-                    #start="2100-12-30T23:23:59Z", to_timestamp="2200-01-01T00:00:00Z",
-                    
                 context = self.connection.new_context(**params)
-                print()
                 # Show what variants are available
-                # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
-                print(', '.join([f'{facet}: {counts}' for facet, counts in context.facet_counts.items() if facet == 'data_node']))
-                
-                print(f'Found {context.hit_count}× {model} {experiment}')
-                
+                if context.hit_count:
+                    # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
+                    print(', '.join([f'{facet}: {counts}' for facet, counts in context.facet_counts.items() if facet == 'data_node']))
+                    print(f'Found {context.hit_count}× {model} {experiment}')
+
                 return context
 
             except requests.exceptions.Timeout as e:
-                if attempt < self.max_tries:
-                    print(f"Timeout. Retrying search in {self.retry_delay} s:\n{type(e).__name__}: {e}")
-                    time.sleep(self.retry_delay)
+                if attempt < self.max_tries-1:
+                    print(f"Timeout. {type(e).__name__}: {e}\nRetrying search in {retry_delay/60} min")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
                 else:
-                    print(f'❌ download search failed {model} {experiment}: Timeout'); 
-                    return {'hit_count': 0}
+                    print(f'❌ search failed {model} {experiment}: Timeout'); 
             except (requests.exceptions.RequestException, Exception) as e:
-                print(f'❌ download search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
-                return {'hit_count': 0}
+                print(f'❌ search failed {model} {experiment}: {type(e).__name__}: {e}'); traceback.print_exc()
+            
+        return False
 
     def models_available_for(self, experiment):
         context = self.search(None, [experiment])
@@ -309,7 +311,15 @@ class DownloaderESGF(Downloader):
         else: return {}
 
 
-    def download(self, models, experiments, forecast_from=None, area=None):
+    def resume(self, model, experiment):
+        raise NotImplementedError
+        if len(sys.argv)>2 and sys.argv[1] == '-resume': 
+            resume = sys.argv[2]
+            to_be_resumed = resume and model in resume and experiment in resume
+            if to_be_resumed: print(f'Resuming {model}_{experiment} download')
+
+
+    def download(self, models, experiments, forecast_from=None, start=1850, end=2100, area=None, resume=False):
         # TODO forecast_from & area not implemented yet
         variable = self.variable
         frequency = self.frequency
@@ -321,13 +331,13 @@ class DownloaderESGF(Downloader):
         for model in models:
             for experiment in experiments:
                 downloaded = False
-                
-                if not self.list_files(f'*{variable}*_{model}_{experiment}*'):
+
+                if not self.list_files(f'*{variable}*_{model}_{experiment}*'): # or self.resume(model, experiment):
                     
                     context = self.search(model, experiment, forecast_from=forecast_from, area=area)  
                     # [print(f'{facet} {counts}') for facet, counts in context.facet_counts.items()]
                     
-                    if(context.hit_count):
+                    if(context and context.hit_count):
                         results = context.search()
                         print(f'{BLUE}⬇{RESET} downloading {results[0].dataset_id}')
                         #results = sorted(results, key=self.splitByNums, reverse=True) 
@@ -340,31 +350,53 @@ class DownloaderESGF(Downloader):
                         # [print(f'{UNDERLINE}{node}{RESET}: {counts} facets') for node, counts in context.facet_counts['data_node'].items()]
 
                         #for result in results: # TODO pick just one variant per server
-                        if results[0]:
-                            result = results[0]
-                            server = result.dataset_id.split('|')[1]
+                        for result in results:
+                            #server = result.dataset_id.split('|')[1]
                             try:
+                                json = result.json
+                                server = json['data_node'] # json['instance_id'], json['variant_label'], json['latest'], json['nominal_resolution'], json['number_of_files'], json['_timestamp']
+                                
+                                if json['retracted']:
+                                    print(f'{YELLOW}Retracted experiment! Skipping.{RESET}')
+                                    continue
+
+                                if experiment == 'historical':
+                                    if not json['datetime_start'].startswith(str(start)):
+                                        print(f"{YELLOW}Server {server} starts late ({json['datetime_start'][:4]}). Skipping.{RESET}")
+                                        continue
+                                else:
+                                    if int(json['datetime_stop'][:4]) < end:
+                                        print(f"{YELLOW}Server {server} ends early ({json['datetime_stop'][:4]}). Skipping.{RESET}")
+                                        continue
+
                                 if self.downloadMethod == 'request':
                                     context = result.file_context()
-                                    # context.facet 'data_node' 'index_node' 'data_specs_version' 'nominal_resolution'
+                                    # context.facet 'data_node' 'data_specs_version' 'nominal_resolution'
                                     #[print(f'{facet} {counts}') for facet, counts in context.facet_counts.items() if counts]
                                     
                                     for file in context.search(facets='variant_label,version,data_node'):
                                         # for facet, counts, in context.facet_counts.items():print(f'facet :{facet}');for value, count in counts.items():print(f'{value}: {count}')
                                         # 'context', 'download_url', 'file_id', 'filename', 'index_node', 'json',  'size', 'tracking_id', 'urls'
-                                        downloaded = self.downloadUrl(file.download_url)
-                                    
-                                    if downloaded:
-                                        continue
+                                        
+                                        filename = self.list_files(file.download_url.split('/')[-1])
+                                        if not filename:
+                                            downloaded = self.downloadUrl(file.download_url) 
+                                        else: 
+                                            print('…', end ='')
+                                            downloaded = True
+                                        
+                                        if not downloaded:
+                                            break # TODO clear files of the failed download
                                 else:
-                                  if self.downloadWget(result, model, experiment, variable): 
-                                    downloaded = True
-                                    continue
-                            # TODO when we group by server, we should switch server here #except requests.exceptions.ConnectionError as e: print(f"❌ server {server} Timeout: {type(e).__name__}: {e}")
-                                # ConnectionError: HTTPConnectionPool(host='{data_node}', port=80): Max retries exceeded with url: /thredds/fileServer/{filepathname} (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at {object}>: Failed to establish a new connection: [Errno 60] Operation timed out'))
+                                  downloaded = self.downloadWget(result, model, experiment, variable)
+
+                                if downloaded:
+                                    break # no not try other servers
                                 
+                            except KeyError as e:
+                                print(f'Missing metadata on {server}: {e}')
                             except (requests.exceptions.TooManyRedirects, requests.exceptions.RequestException, Exception) as e:
-                                print(f"❌ server {server} failed: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
+                                print(f"Server {server} error: {type(e).__name__}: {e}"); traceback.print_exc(limit=1)
 
                         # 'number_of_files', 'las_url', 'urls', 'context',  'opendap_url', 'globus_url', 'gridftp_url', 'index_node', 'json', 
                     else:
@@ -396,22 +428,29 @@ class DownloaderESGF(Downloader):
                             f.write(data)
                             progress += chunk
                             if progress%(100*chunk) == 0: 
-                                if size: print(f"Downloaded: {int(progress/size*100)}%", end='\r')
+                                if size: 
+                                    print(f"Downloaded: {int(round(progress/size*100))}%", end='\r')
                     return True
-                return False
+                else:
+                    print(f'Failed. Error code {response.status_code}')
+                    return False
 
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                if attempt < self.max_tries:
-                    
+            except requests.exceptions.Timeout as e:
+                if attempt < self.max_tries-1:
                     #retry_after = response.headers.get('Retry-After')
                     #if retry_after: print("Suggested retry period: ", int(retry_after))
-                    print(f"Timeout. Retrying download in {retry_delay} s:\n{type(e).__name__}: {e}")
+                    print(f"Timeout.\n{type(e).__name__}: {e}\nRetrying download in {retry_delay/60} min")
                     time.sleep(retry_delay)
                     retry_delay *= 2
 
+            except requests.exceptions.ConnectionError as e:
+                if 'Max retries exceeded with url' in str(e):
+                    print(f"Failed. Max retries")
                 else:
-                    print(f'❌ max retries')
-                    return False
+                    print(f"Failed. Error: {type(e).__name__}: {e}")
+                return False
+
+        print(f'Failed. Max retries')
         return False
 
     def downloadWget(self, ds, model, experiment, variable):
@@ -471,16 +510,16 @@ def main():
     try:
         #show_server_certification_issuers(DownloaderESGF.servers[0])
         #datastore = DownloaderCopernicus(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'))
-        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='wget') #wget|request
+        datastore = DownloaderESGF(os.path.expanduser(f'~/Downloads/ClimateData/discovery/'), method='request') #wget|request
         datastore.set(
             #area=[51, 12, 48, 18], # not supported yet
-            'tasmax', 'day') # temperature above surface max
-        
-        os.environ['ESGF_PYCLIENT_NO_FACETS_STAR_WARNING'] = '1'
+            'tas', 'mon') # temperature above surface max
 
-        print(datastore.models_available_for('ssp245'))
+        #print(datastore.models_available_for('ssp245'))
+        #context = datastore.search('CESM2', 'ssp245')
 
-        #datastore.download(["EC-Earth3-CC"], ['ssp245'])
+        #results = context.search()
+        datastore.download(["EC-Earth3"], ['historical'])
         #results = datastore.download(models, ['ssp126'])
 
     except Exception as e:
