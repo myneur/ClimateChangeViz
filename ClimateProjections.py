@@ -25,6 +25,7 @@ forecast_from = 2015 # Forecasts are actually from 2014. Hindcast untill 2018 or
 from glob import glob
 from pathlib import Path
 import os
+import sys
 from os.path import basename
 
 # Data & Date
@@ -50,16 +51,18 @@ RED = '\033[91m'; RESET = "\033[0m"; YELLOW = '\033[33m'
 
 DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
 #datastore = downloader.DownloaderCopernicus(DATADIR) #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
-#datastore = downloader.DownloaderESGF(DATADIR, method='request') # method='wget' | method='request'
-datastore = downloader.DownloaderESGF(DATADIR, method='wget') # method='wget' | method='request'
+datastore = downloader.DownloaderESGF(DATADIR, method='request') # method='wget' | method='request'
+#datastore = downloader.DownloaderESGF(DATADIR, method='wget') # method='wget' | method='request'
 
 experiments = list(scenarios['to-visualize'].keys())
 
 def main():
-  #GlobalTemperature()
-  MaxTemperature()
-  #TropicDaysBuckets()
-  #return MaxTemperature(frequency='mon')
+    if 'max' in sys.argv:
+        MaxTemperature()
+        TropicDaysBuckets()
+    else:
+        GlobalTemperature()
+
   #return Discovery() # with open('ClimateProjections.py', 'r') as f: exec(f.read())
 
 
@@ -71,7 +74,8 @@ def GlobalTemperature(drop_experiments=None):
         observed_t = load_observed_temperature()
         
         datastore.set('tas', 'mon') # temperature above surface
-        datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
+        if not 'preview' in sys.argv: 
+            datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
 
         aggregate(var='tas')
         data = loadAggregated()
@@ -226,14 +230,14 @@ def MaxTemperature(frequency='day'):
     try:
         models = pd.read_csv('metadata/models.csv')
 
-        models_validated = models[models['Europe-accuracy'] == 1]
-
-        model_names = list(models_validated['model'].values)
+        #models = models[models['Europe-accuracy'] == 1]
+        model_names = list(models['model'].values)
 
         observed_max_t = load_observed_max_temperature()
 
         datastore.set('tasmax', frequency, area=md['area']['cz']) # temperature above surface max
-        datastore.download(model_names, ['ssp245', 'historical'], forecast_from=forecast_from)    
+        if not 'preview' in sys.argv: 
+            datastore.download(model_names, ['ssp245', 'historical'], forecast_from=forecast_from)    
 
         aggregate(var='tasmax')
         data = loadAggregated(wildcard='tasmax_', models=model_names)
@@ -301,16 +305,18 @@ def TropicDaysBuckets():
     try:
         models = pd.read_csv('metadata/models.csv')
         
-        models_validated = models[models['Europe-accuracy'] == 1]
-        model_names = list(models_validated['model'].values)
+        #models = models[models['Europe-accuracy'] == 1]
+        model_names = list(models['model'].values)
 
         observed_tropic_days_annually = load_observed_tropic_days()
         
         datastore.set('tasmax', 'day', area=md['area']['cz']) # temperature above surface max
-        #datastore.download(model_names, ['ssp245', 'historical'],  forecast_from=forecast_from) #variable=f'daily_maximum_near_surface_air_temperature')
+        if not 'preview' in sys.argv: 
+            datastore.download(model_names, ['ssp245', 'historical'],  forecast_from=forecast_from) #variable=f'daily_maximum_near_surface_air_temperature')
       
         aggregate(var='tasmax', stacked=True) 
         data = loadAggregated(wildcard='tasmaxbuckets_', models=model_names)
+        #data = loadAggregated(wildcard='tasmaxbuckets_')
 
         data = cleanUpData(data)
         #data = normalize(data) # TO REVIEW: should we normalize max the same way like avg? 
@@ -393,10 +399,6 @@ def load_observed_temperature():
   observation = observations[['Year', observations.columns[1]]].groupby('Year').mean()
   return observation[observation.index <= 2023]
 
-def history():
-  # not working yet: https://web.archive.org/web/20240516185454/https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-land?tab=form
-  unavailable_experiments = downloader.reanalysis()
-
 
 # COMPUTATION
 
@@ -474,14 +476,12 @@ def aggregate_file(filename, var='tas', buckets=None, area=None, verbose=False):
                 if(cover[0]>tolerance[0] or cover[1]<tolerance[1] or cover[2]<tolerance[2] or cover[3]>tolerance[3]):
                     print(cover, area)
                     print((cover[0]>area[0] , cover[1]<area[1] , cover[2]<area[2] , cover[3]>area[3]))
-                    if verbose: print('s', end='')
                     data = data.sel({lat: slice(area[2], area[0]), lon: slice(area[1], area[3])})# S-N # W-E
             else:
-                if verbose: print('s', end='')
                 data = data.sel({lat: lat_value, lon: lon_value}, method='nearest')
             data.attrs['coverage_constrained'] = model_coverage(data, lat, lon)
-        else:
-            if verbose: print('.', end='')
+
+        if verbose: print('>' if area else '.', end='')
         
         # AGGREGATE SPATIALLY
         
@@ -595,39 +595,63 @@ def loadAggregated(models=None, experiments=None, unavailable_experiments=None, 
 
     return data_ds'''
 
-def cleanUpData(data):
+def cleanUpData(data, start=1850, end=2100):
     # removing historical data beyond requested period, because some models can include them despite request
     try:
+        print(f'Cropping years')
         def filter_years(ds):
             if 'historical' in ds['experiment']:
                 ds = ds.sel(year=ds['year'] < forecast_from)
-
+            else:
+                ds = ds.sel(year=ds['year'] <= end)
             return ds
         data = data.groupby('experiment').map(filter_years) #, squeeze=True
-        
-        ''' # CHECK FOR MISSING YEARS
-        raise(NotImplementedError)
-        for model in data.model.values.flat:
-          for experiment in data.experiment.values.flat:
-            year_range = np.arange(1850, 2101)
-            ds = data.sel(model=model, experiment=experiment)
-            years = ds['year'].values
-            missing_years = np.setdiff1d(year_range, years)
-            unique_years, counts = np.unique(years, return_counts=True)
-            duplicate_years = unique_years[counts > 1]
-
-            if missing_years.size > 0:
-                print(f"{YELLOW}Missing years:{RESET} {missing_years} in {model} {experiment}")
-            if duplicate_years.size > 0:
-                print(f"{YELLOW}Duplicate years:{RESET} {duplicate_years} in {model} {experiment}")
-        '''
-        # merging data series of different periods for the same model
-        #models = data.model.values
-        #if len(models) > len(set(models)):
 
         data = data.groupby('model').mean('model')
+
+        print(f"Models with incomplete coverage from {len(data['model'].values)} models and {len(data['experiment'].values)} experiments:")
+        
+        #model_limits = pd.DataFrame(columns=['model', 'experiment', 'start', 'end'])
+        model_limits = []
+
+        for model in set(data['model'].values):
+            for experiment in set(data['experiment'].values):
+                try:
+                    model_data = data.sel(model=model, experiment=experiment)
+                    if isinstance(data, xr.Dataset):
+                        var = list(model_data.data_vars)[0]
+                        model_data = model_data[var]
+                    
+                    mask = ~model_data.isnull()
+                    if 'bins' in model_data.dims:
+                        mask = mask.any(dim='bins')  
+
+                    valid_years = model_data['year'][mask].values
+                    model_min, model_max = valid_years.min().item(), valid_years.max().item()
+
+                    min_year, max_year = (1850, 2014) if experiment == 'historical' else (2015, 2100-1) # let's be tolerant for the last missing year
+                    
+                    if model_min > min_year or model_max < max_year:
+                        data = data.where(~((data.model == model) & (data.experiment == experiment)), drop=True)
+                        model_limits.append([model, experiment, model_min, model_max])
+
+                except (ValueError, AttributeError, KeyError) as e:
+                    data = data.where(~((data.model == model) & (data.experiment == experiment)), drop=True)
+                    model_limits.append([model, experiment, None, None])
+
+                except Exception as e:
+                    print(f"{RED}Error model {model}, {experiment}: {type(e).__name__}: {e}{RESET}"); 
+                    model_limits.append([model, experiment, None, None])
+                    traceback.print_exc(limit=1)  
+                    print(model_data)
+        
+        print(YELLOW, end='')
+        model_limits = pd.DataFrame(model_limits, columns=['model', 'experiment', 'start', 'end'])
+        print(model_limits[model_limits['start'].notna() & model_limits['end'].notna()])
+        print(RESET, end='')
+
     except Exception as e: 
-        print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); 
+        print(f"{RED}Error: {type(e).__name__}: {e}{RESET}")
         traceback.print_exc(limit=1)  
         print(data)
 
@@ -714,7 +738,8 @@ def preindustrial_temp(data):
 md = util.loadMD('model_md')
 
 # RUN the function defined in the 'run' at the top
-try:
-  result = main()
-  #result = globals()[run]()
-except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc()
+if __name__ == "__main__":
+    try:
+      result = main()
+      #result = globals()[run]()
+    except Exception as e: print(f"\nError: {type(e).__name__}: {e}"); traceback.print_exc()
