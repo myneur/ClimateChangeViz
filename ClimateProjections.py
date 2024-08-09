@@ -4,10 +4,6 @@
 
 # Data-sets: cds.climate.copernicus.eu/cdsapp#!/dataset/projections-cmip6 | Model availability: cds.climate.copernicus.eu | aims2.llnl.gov
 
-# WHAT
-reaggregate = False # compute aggregations regardles if they already exist
-
-
 # LEGEND
 scenarios = { # CO2 emissions scenarios charted on https://www.carbonbrief.org/cmip6-the-next-generation-of-climate-models-explained/
   'to-visualize': {
@@ -50,9 +46,13 @@ RED = '\033[91m'; RESET = "\033[0m"; YELLOW = '\033[33m'
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
 
 DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
-#datastore = downloader.DownloaderCopernicus(DATADIR) #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
-datastore = downloader.DownloaderESGF(DATADIR, method='request') # method='wget' | method='request'
-#datastore = downloader.DownloaderESGF(DATADIR, method='wget') # method='wget' | method='request'
+if 'esgf' in sys.argv:
+    if 'wget' in sys.argv:
+        datastore = downloader.DownloaderESGF(DATADIR, method='wget')
+    else:
+        datastore = downloader.DownloaderESGF(DATADIR, method='request') 
+else:
+    datastore = downloader.DownloaderCopernicus(DATADIR) #mark_failing_scenarios = True to save unavailable experiments not to retry downloading again and again. Clean it in 'metadata/status.json'. 
 
 experiments = list(scenarios['to-visualize'].keys())
 
@@ -92,6 +92,8 @@ def GlobalTemperature(drop_experiments=None):
             
             if experiment_to_drop: experiments.remove(experiment_to_drop)
             data = models_with_all_experiments(data_all, keep_experiments=experiment_set, dont_count_historical=True)
+
+            classify_models(data, models, observed_t)
             
             preindustrial_t = preindustrial_temp(data)
 
@@ -539,7 +541,7 @@ def aggregate(stacked=None, var='tas'):
       try:
           candidate_files = [f for f in os.listdir(datastore.DATADIR) if f.startswith(f'agg_{var_aggregated}_{model}_{experiment}_{run}_{grid}_{time}')] 
           # NOTE it expects the same filename strucutre, which seems to be followed, but might be worth checking for final run (or regenerating all)
-          if reaggregate or not len(candidate_files):
+          if not len(candidate_files):
               aggregate_file(filename, var=var, buckets=stacked, area=datastore.area, verbose=True)
               #data = aggregate_file(filename, var=var, buckets=stacked)
 
@@ -610,10 +612,7 @@ def cleanUpData(data, start=1850, end=2100):
         data = data.groupby('model').mean('model')
 
         print(f"Models with incomplete coverage from {len(data['model'].values)} models and {len(data['experiment'].values)} experiments:")
-        
-        #model_limits = pd.DataFrame(columns=['model', 'experiment', 'start', 'end'])
         model_limits = []
-
         for model in set(data['model'].values):
             for experiment in set(data['experiment'].values):
                 try:
