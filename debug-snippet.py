@@ -30,3 +30,25 @@ import visualisations
 
 chart = visualisations.Charter()
 chart.plot([ds], series='model')
+###
+
+import requests
+custom_ca_bundle_path = '/metadata/ca-bundle.crt'
+
+# Making a request with the custom CA bundle
+response = requests.get('https://esg-dn1.nsc.liu.se/esgf-idp/openid/petr.meissner@gmail.com', verify=custom_ca_bundle_path)
+print(response.content)
+
+### Modifying Your Code: In your specific case, you could modify the `logon_with_openid` function to use the custom CA bundle:
+
+import os
+import pyesgf.logon
+
+def login_with_custom_ca():
+    user = 'your_openid'
+    password = os.getenv('ESGF_PASSWORD')
+    custom_ca_bundle_path = '/path/to/your/custom/ca-bundle.crt'
+
+    lm = pyesgf.logon.LogonManager()
+    lm.logon_with_openid(openid=user, password=password, ca_cert_custom=custom_ca_bundle_path, bootstrap=False)
+
