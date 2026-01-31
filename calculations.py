@@ -407,6 +407,36 @@ def observed_max_temperature():
     observed_max_t = pd.concat(observed_max_t)
     return observed_max_t.groupby(observed_max_t.index)['Max'].max()
 
+def observed_average_temperature():
+    observed_avg_t = []
+    for file in glob('data/Czechia/*.xlsx'):
+        try:
+            observations = pd.read_excel(file, sheet_name='teplota průměrná', header=3)
+            # Assuming format is Year, Month, Day1, Day2... or similar, 
+            # but based on observed_max_temperature logic:
+            # Columns 0 and 1 are Year and Month. Remaining columns are daily values.
+            
+            # Calculate monthly mean across days (axis 1)
+            # Note: observed_max_temperature took max across days. Here we need mean.
+            avg_t = observations.iloc[:, :2].copy()
+            avg_t['Mean'] = observations.iloc[:, 2:].mean(axis=1)
+            
+            avg_t = avg_t.rename(columns={'rok': 'Year', 'měsíc': 'Month'})
+            
+            # Group by Year and take the mean of monthly means
+            # (Weighted by days in month would be more precise, but simple mean of monthly means is a reasonable approximation if daily data isn't directly available as a long series)
+            avg_t_annual = avg_t.groupby('Year')['Mean'].mean()
+            observed_avg_t.append(avg_t_annual)
+        except Exception as e:
+            print(f"Skipping {file} for average temp: {e}")
+
+    if not observed_avg_t:
+        return pd.Series()
+
+    observed_avg_t = pd.concat(observed_avg_t)
+    # Group by index (Year) and take the mean across all stations
+    return observed_avg_t.groupby(observed_avg_t.index).mean()
+
 def observed_tropic_days():
     max_by_place = [pd.read_excel(file, sheet_name='teplota maximální', header=3) for file in glob('data/Czechia/*.xlsx')]
     max_by_place = pd.concat(max_by_place)
