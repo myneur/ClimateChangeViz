@@ -14,6 +14,8 @@ scenarios = { # CO2 emissions scenarios charted on https://www.carbonbrief.org/c
     'ssp534os': "peak at 2040, then steeper decline",
     'ssp585': "5° = 3× emissions in 2075"}
   }
+# CONFIGURATION
+DATADIR = "/Volumes/5T/backups/ClimateData" # 200GB+ os.path.expanduser(f'~/Downloads/ClimateData/')
 forecast_from = 2015
 
 from glob import glob
@@ -44,8 +46,6 @@ import traceback
 RED = '\033[91m'; RESET = "\033[0m"; YELLOW = '\033[33m'
 
 # UNCOMENT WHAT TO DOWNLOAD, COMPUTE AND VISUALIZE:
-
-DATADIR = os.path.expanduser(f'~/Downloads/ClimateData/') # DOWNLOAD LOCATION (most models have hundreds MB globally)
 if 'esgf' in sys.argv:
     if 'wget' in sys.argv:
         datastore = downloader.DownloaderESGF(DATADIR, method='wget')
@@ -60,17 +60,20 @@ def main():
     if 'max' in sys.argv:
         MaxTemperature()
         TropicDaysBuckets()
+    elif 'comparison' in sys.argv:
+        LocalComparison()
     else:
         GlobalTemperature()
 
 # VISUALIZATIONS
 
-def GlobalTemperature(drop_experiments=None):
+def GlobalTemperature(drop_experiments=None, additional_visualizations=None):
     try:
         models = pd.read_csv('metadata/models.csv')
         observed_t = calc.observed_temperature()
         
         datastore.set('tas', 'mon') # temperature above surface
+
         if not 'preview' in sys.argv: 
             datastore.download(models['model'].values, experiments, forecast_from=forecast_from)
 
@@ -112,12 +115,75 @@ def GlobalTemperature(drop_experiments=None):
             chart.plot(quantile_ranges[1:2], labels=scenarios['to-visualize'], models=model_set)
             chart.annotate_forecast(y=preindustrial_t)
 
+            if additional_visualizations:
+                additional_visualizations(chart)
+
             chart.show()
             chart.save(tag=f'tas_{len(model_set)}_{"+".join(experiment_set)}')
             
         return data
     except OSError as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}") 
     except Exception as e: print(f"{RED}Error: {type(e).__name__}: {e}{RESET}"); traceback.print_exc(limit=10)
+
+
+def LocalComparison(): # Comparison of local and global trend
+    try:
+        # 1. Load Czech Data (Absolute)
+        filename = 'data/Czechia/Teplota ČR od roku 1961 (faktaoklimatu.cz, verze 2025-01-05).xlsx'
+        df = pd.read_excel(filename, sheet_name='Shrnutí', header=None)
+        subset = df.iloc[27:92, [1, 3]] # Col B (1) and D (3)
+        data = subset.iloc[1:] # Skip header row
+        
+        cz_years = pd.to_numeric(data[1])
+        cz_temps = pd.to_numeric(data[3], errors='coerce')
+        cz_series = pd.Series(cz_temps.values, index=cz_years)
+        
+        # 2. Load Global Data (Anomaly 1850-1900)
+        global_temps = calc.observed_temperature() # DataFrame with Year index
+        global_series = global_temps.iloc[:, 0]
+        
+        # 3. Calculate 1961-1990 Baseline Means
+        # Czech data starts 1961, so we take 1961-1990
+        cz_baseline = cz_series.loc[1961:1990].mean()
+        
+        # Global data: intersect with 1961-1990
+        gl_baseline = global_series.loc[1961:1990].mean()
+        print("WARNING: WORK IN PROGRESS! The normalization to pre-industrial era is not done")
+
+        # 4. Convert to Anomalies (Base 1961-1990)
+        cz_anomaly = cz_series - cz_baseline
+        gl_anomaly = global_series - gl_baseline
+        
+        # 5. Visualize
+        chart = visualizations.Charter(
+            title='Temperature Anomaly Comparison (Base 1961-1990)', 
+            ylabel='Deviation from 1961-1990 Average (°C)',
+            zero=0,
+            reference_lines=[0],
+            yformat=lambda y, i: f"{'+' if y>0 else ''}{y:.1f} °C"
+        )
+        
+        # Plot Czech Anomaly
+        # Using chart.ax directly for custom plotting
+        chart.ax.plot(cz_anomaly.index, cz_anomaly.values, color='red', linewidth=2, label='Czechia (5y avg)')
+        
+        # Plot Global Anomaly
+        # Scatter for individual years
+        chart.ax.scatter(gl_anomaly.index, gl_anomaly.values, color='black', s=10, alpha=0.5, label='Global (observations)')
+        
+        # Dotted line for 5-year rolling average
+        gl_rolling = gl_anomaly.rolling(window=5, center=True).mean()
+        chart.ax.plot(gl_rolling.index, gl_rolling.values, color='black', linewidth=1.5, linestyle=':', label='Global (5y avg)')
+        
+        chart._xaxis_climatic()
+        chart.ax.legend(loc='upper left', frameon=False)
+        
+        chart.show()
+        chart.save(tag='comparison_anomaly')
+
+    except Exception as e:
+        print(f"{RED}Error displaying Comparison:{RESET} {e}")
+        traceback.print_exc()
 
 
 # monthly: 'monthly_maximum_near_surface_air_temperature', 'tasmax', 'frequency': 'monthly'
