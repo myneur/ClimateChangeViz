@@ -266,3 +266,12 @@ class Charter:
         ax.vlines(x=1850, ymin=zero, ymax=zero+height, color=color, linestyle='-')
         #else: ax.axvline(x=current_year, color='lightgray', linewidth=.5)
 
+    def _you_are_here(self, year, temperature): 
+        ax = self.ax
+        #ax.annotate('', xy=(year, temperature + 2.5), xytext=(year, temperature + 2), arrowprops=dict(arrowstyle='->', color='black', lw=2))
+        ax.arrow(year, temperature + 2, 0, 0.5, head_width=0.1, head_length=0.25, fc='black', ec='black', length_includes_head=True)
+        ax.add_artist(plt.Circle((year, temperature), 2, color='none', ec='black', linewidth=2))
+        ax.add_artist(plt.Circle((year, temperature), 1.5, color='red'))
+        ax.text(year, temperature, "You Are Here", ha='center', va='center', fontsize=12, color='white')
+
+
